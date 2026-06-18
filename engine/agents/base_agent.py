@@ -46,6 +46,15 @@ REGLAS DE ESTILO:
 - NO escribas la fecha al inicio
 - NO uses <h2> ni <h3>, solo párrafos
 
+SEO / GOOGLE DISCOVER:
+- El PRIMER párrafo debe responder qué, quién, dónde y cuándo, y contener la palabra clave principal del título de forma natural (no forzada)
+- Repetí la palabra clave principal (o una variante natural) al menos una vez más en el cuerpo, sin keyword stuffing
+- Mencioná lugares, organismos y nombres propios completos al menos una vez (ayuda a Google a indexar entidades)
+- Evitá ambigüedad: cada párrafo debe poder leerse de forma independiente y tener sentido por sí solo
+- NO uses títulos clickbait ni preguntas como título; el contenido debe responder exactamente lo que el título promete
+- Frases cortas y concretas, evitá oraciones de más de 25-30 palabras
+- El último párrafo debe cerrar con un dato concreto o contexto adicional, nunca con una opinión o conclusión genérica
+
 FORMATO:
 - Empezá DIRECTO con <p>. Sin título ni encabezado.
 - Solo etiquetas <p> y <strong>
@@ -235,7 +244,15 @@ class BaseNewsAgent(ABC):
 
 {self.cfg.prompt_selection}
 
-Seleccioná como máximo {self.cfg.max_topics} titulares. Respondé SOLO con JSON válido, sin texto adicional:
+Seleccioná como máximo {self.cfg.max_topics} titulares.
+Para "titulo_sugerido" generá un título optimizado para Google Discover:
+- Claro y concreto, sin clickbait ni preguntas
+- Incluí la palabra clave principal (lugar, organismo o tema) cerca del inicio
+- Nombres propios completos (no abreviar)
+- Sin mayúsculas innecesarias ni signos de exclamación
+- Máximo 70-75 caracteres
+
+Respondé SOLO con JSON válido, sin texto adicional:
 [
   {{"indice": 0, "titulo_sugerido": "Título periodístico"}},
   {{"indice": 1, "titulo_sugerido": "..."}}
