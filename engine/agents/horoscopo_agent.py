@@ -34,7 +34,7 @@ class HoroscopoAgent:
         titulo = f"Horóscopo del día: {fecha}"
         self.log.info(f"=== HoroscopoAgent — {fecha} ===")
 
-        if dup_checker and dup_checker.is_duplicate(titulo):
+        if dup_checker and dup_checker.is_duplicate(titulo, exact=True):
             self.log.info("SKIP — horóscopo de hoy ya publicado.")
             return [{"title": titulo, "status": "skipped", "reason": "duplicado"}]
 

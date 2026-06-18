@@ -51,7 +51,7 @@ class ClimaAgent:
         cielo_texto, icono = WMO_MAP.get(clima["codigo_wmo"], ("Variable", "⛅"))
 
         titulo = self._generar_titulo(clima, cielo_texto, alertas, fecha)
-        if dup_checker and dup_checker.is_duplicate(titulo):
+        if dup_checker and dup_checker.is_duplicate(titulo, exact=True):
             self.log.info("SKIP — clima de hoy ya publicado.")
             return [{"title": titulo, "status": "skipped", "reason": "duplicado"}]
 

@@ -34,14 +34,23 @@ class DuplicateChecker:
             f"{len(self._known_urls)} URLs conocidas."
         )
 
-    def is_duplicate(self, title: str, source_url: str = None) -> bool:
+    def is_duplicate(self, title: str, source_url: str = None, exact: bool = False) -> bool:
         # 1. Verificar URL exacta
         if source_url and source_url.strip() in self._known_urls:
             log.info(f"DUPLICADO por URL: {source_url}")
             return True
 
-        # 2. Verificar similitud de título
         norm = self._normalize(title)
+
+        # 2a. Modo exacto — para títulos con fecha embebida (horóscopo, clima),
+        # donde el título de ayer es fuzzy-similar al de hoy pero NO es duplicado real.
+        if exact:
+            if norm in self._known_titles:
+                log.info(f"DUPLICADO por título exacto: '{title[:60]}'")
+                return True
+            return False
+
+        # 2b. Verificar similitud de título (fuzzy)
         for known in self._known_titles:
             ratio = difflib.SequenceMatcher(None, norm, known).ratio()
             if ratio >= self.threshold:
