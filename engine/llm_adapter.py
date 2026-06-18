@@ -4,7 +4,10 @@ El agente llama a LLMAdapter.call() sin saber qué proveedor usa por debajo.
 """
 
 import time
+import logging
 import requests
+
+_log = logging.getLogger("LLMAdapter")
 
 
 class LLMAdapter:
@@ -41,7 +44,15 @@ class LLMAdapter:
                 res = requests.post(url, json=payload,
                                     headers={"Content-Type": "application/json"}, timeout=30)
                 if res.status_code == 200:
-                    return res.json()["candidates"][0]["content"]["parts"][0]["text"]
+                    data = res.json()
+                    candidate = data["candidates"][0]
+                    finish = candidate.get("finishReason", "UNKNOWN")
+                    if finish not in ("STOP", "MAX_TOKENS"):
+                        _log.warning(f"Gemini finishReason={finish}")
+                    if finish == "MAX_TOKENS":
+                        _log.warning(f"Gemini MAX_TOKENS alcanzado (maxOutputTokens={max_tokens})")
+                    return candidate["content"]["parts"][0]["text"]
+                _log.warning(f"Gemini HTTP {res.status_code}: {res.text[:300]}")
                 if res.status_code >= 500:
                     time.sleep(2 ** attempt)
                     continue

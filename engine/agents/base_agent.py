@@ -240,7 +240,7 @@ Seleccioná como máximo {self.cfg.max_topics} titulares. Respondé SOLO con JSO
   {{"indice": 0, "titulo_sugerido": "Título periodístico"}},
   {{"indice": 1, "titulo_sugerido": "..."}}
 ]"""
-        respuesta = self.llm.call(prompt, max_tokens=800)
+        respuesta = self.llm.call(prompt, max_tokens=2048)
         if not respuesta:
             return None
         try:
