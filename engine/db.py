@@ -41,6 +41,9 @@ class AgentConfig:
     wp_category: str = ""
     feeds: list[str] = field(default_factory=list)
     llm: LLMConfig | None = None
+    llm_fallback: LLMConfig | None = None
+    wp_author_id: int | None = None
+    post_status: str = "publish"
 
 
 @dataclass
@@ -99,11 +102,15 @@ def load_pipeline(pipeline_id: int) -> PipelineConfig:
                        a.prompt_selection, a.prompt_writing,
                        a.keywords_required, a.keywords_skip,
                        a.max_topics, a.wp_category,
+                       a.wp_author_id, a.post_status,
                        l.id AS llm_id, l.provider, l.model_name,
-                       l.api_key_enc, l.temperature, l.max_tokens
+                       l.api_key_enc, l.temperature, l.max_tokens,
+                       lf.id AS fallback_id, lf.provider AS fallback_provider, lf.model_name AS fallback_model_name,
+                       lf.api_key_enc AS fallback_api_key_enc, lf.temperature AS fallback_temperature, lf.max_tokens AS fallback_max_tokens
                 FROM pipeline_agents pa
                 JOIN agents a ON a.id = pa.agent_id
-                LEFT JOIN llm_configs l ON l.id = a.llm_config_id
+                LEFT JOIN llm_configs l  ON l.id = a.llm_config_id
+                LEFT JOIN llm_configs lf ON lf.id = a.fallback_llm_config_id
                 WHERE pa.pipeline_id = %s AND pa.active = TRUE AND a.active = TRUE
                 ORDER BY pa.run_order
             """, (pipeline_id,))
@@ -134,6 +141,16 @@ def load_pipeline(pipeline_id: int) -> PipelineConfig:
                         temperature=float(r["temperature"]),
                         max_tokens=r["max_tokens"] or 1500,
                     )
+                llm_fallback = None
+                if r["fallback_id"]:
+                    llm_fallback = LLMConfig(
+                        id=r["fallback_id"],
+                        provider=r["fallback_provider"],
+                        model_name=r["fallback_model_name"],
+                        api_key=_decrypt(r["fallback_api_key_enc"]),
+                        temperature=float(r["fallback_temperature"]),
+                        max_tokens=r["fallback_max_tokens"] or 1500,
+                    )
                 pipeline.agents.append(AgentConfig(
                     id=r["id"],
                     name=r["name"],
@@ -146,6 +163,9 @@ def load_pipeline(pipeline_id: int) -> PipelineConfig:
                     wp_category=r["wp_category"] or "",
                     feeds=feeds_by_agent[r["id"]],
                     llm=llm,
+                    llm_fallback=llm_fallback,
+                    wp_author_id=r["wp_author_id"],
+                    post_status=r["post_status"] or "publish",
                 ))
 
     return pipeline

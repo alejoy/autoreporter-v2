@@ -13,6 +13,7 @@ psycopg2-binary>=2.9.9
 requests>=2.31.0
 Pillow>=10.3.0
 cryptography>=42.0.0
+tenacity>=8.2.3
 
 # Dev
 python-dotenv>=1.0.0

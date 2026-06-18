@@ -151,6 +151,7 @@ class WordPressClient:
         featured_media: int | None = None,
         status: str = "draft",
         tags: list[int] | None = None,
+        author: int | None = None,
     ) -> dict | None:
         payload: dict = {"title": title, "content": content, "status": status}
         if category_id:
@@ -159,6 +160,8 @@ class WordPressClient:
             payload["featured_media"] = featured_media
         if tags:
             payload["tags"] = tags
+        if author:
+            payload["author"] = author
 
         try:
             r = self._post_json("/wp-json/wp/v2/posts", json=payload)

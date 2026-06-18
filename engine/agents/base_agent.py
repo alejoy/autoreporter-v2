@@ -74,7 +74,7 @@ class BaseNewsAgent(ABC):
         self.pipeline_id = pipeline_id
         self.name = agent_cfg.name
         self.log = get_logger(self.name)
-        self.llm = LLMAdapter(agent_cfg.llm) if agent_cfg.llm else None
+        self.llm = LLMAdapter(agent_cfg.llm, agent_cfg.llm_fallback) if agent_cfg.llm else None
 
     # ── Método principal ────────────────────────────────────────────────────────
 
@@ -149,7 +149,8 @@ class BaseNewsAgent(ABC):
                 content=html_nota,
                 category_id=category_id,
                 featured_media=media_id,
-                status="publish",
+                status=self.cfg.post_status,
+                author=self.cfg.wp_author_id,
             )
             if post:
                 if dup_checker:

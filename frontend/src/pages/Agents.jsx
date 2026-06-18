@@ -10,7 +10,9 @@ const empty = {
   name: '', agent_type: 'nacional',
   prompt_selection: '', prompt_writing: '',
   keywords_required: [], keywords_skip: [],
-  max_topics: 3, wp_category: '', llm_config_id: null, active: true,
+  max_topics: 3, wp_category: '', llm_config_id: null,
+  fallback_llm_config_id: null, wp_author_id: null, post_status: 'publish',
+  active: true,
   feeds: [],
 }
 
@@ -106,7 +108,13 @@ export default function Agents() {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const openCreate = () => { setForm(empty); setModal({ mode: 'create' }) }
-  const openEdit   = a  => { setForm({ ...a, llm_config_id: a.llm_config_id ?? null }); setModal({ mode: 'edit', data: a }) }
+  const openEdit   = a  => { setForm({
+    ...a,
+    llm_config_id: a.llm_config_id ?? null,
+    fallback_llm_config_id: a.fallback_llm_config_id ?? null,
+    wp_author_id: a.wp_author_id ?? null,
+    post_status: a.post_status || 'publish',
+  }); setModal({ mode: 'edit', data: a }) }
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -133,8 +141,10 @@ export default function Agents() {
                     {' · '}{a.feeds?.length || 0} feeds
                     {' · '}{a.max_topics} temas máx
                     {a.wp_category && ` · cat: ${a.wp_category}`}
+                    {a.wp_author_id && ` · autor WP: ${a.wp_author_id}`}
                   </p>
                 </div>
+                {a.post_status === 'draft' && <Badge variant="info">borrador</Badge>}
                 <Badge variant={a.active ? 'success' : 'default'}>{a.active ? 'activo' : 'inactivo'}</Badge>
                 <div className="flex gap-2">
                   <Btn size="sm" variant="ghost" onClick={() => openEdit(a)}><Pencil size={14} /></Btn>
@@ -177,10 +187,30 @@ export default function Agents() {
             <Input label="Máx temas por run" type="number" min="1" max="10" value={form.max_topics} onChange={e => set('max_topics', parseInt(e.target.value))} />
           </div>
 
-          <Select label="Modelo LLM" value={form.llm_config_id ?? ''} onChange={e => set('llm_config_id', e.target.value ? parseInt(e.target.value) : null)}>
-            <option value="">Sin asignar</option>
-            {llms.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </Select>
+          <div className="grid grid-cols-2 gap-3">
+            <Select label="Modelo LLM" value={form.llm_config_id ?? ''} onChange={e => set('llm_config_id', e.target.value ? parseInt(e.target.value) : null)}>
+              <option value="">Sin asignar</option>
+              {llms.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </Select>
+            <Select label="LLM de respaldo (si el primario falla)" value={form.fallback_llm_config_id ?? ''} onChange={e => set('fallback_llm_config_id', e.target.value ? parseInt(e.target.value) : null)}>
+              <option value="">Sin respaldo</option>
+              {llms.filter(l => l.id !== form.llm_config_id).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="ID de usuario WordPress (autor)"
+              type="number"
+              value={form.wp_author_id ?? ''}
+              onChange={e => set('wp_author_id', e.target.value ? parseInt(e.target.value) : null)}
+              placeholder="Dejar vacío = autor por defecto"
+            />
+            <Select label="Estado de publicación" value={form.post_status} onChange={e => set('post_status', e.target.value)}>
+              <option value="publish">Publicar directo</option>
+              <option value="draft">Guardar como borrador</option>
+            </Select>
+          </div>
 
           <KeywordsInput
             label="Keywords requeridas (al menos una en el titular)"

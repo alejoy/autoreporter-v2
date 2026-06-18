@@ -25,7 +25,7 @@ class HoroscopoAgent:
         self.pipeline_id = pipeline_id
         self.name = agent_cfg.name if agent_cfg else "HoroscopoAgent"
         self.log = get_logger(self.name)
-        self.llm = LLMAdapter(agent_cfg.llm) if agent_cfg and agent_cfg.llm else None
+        self.llm = LLMAdapter(agent_cfg.llm, agent_cfg.llm_fallback) if agent_cfg and agent_cfg.llm else None
 
     def run(self, wp_client, dup_checker, category_id: int | None, dry_run: bool = False) -> list[dict]:
         from datetime import datetime
@@ -61,7 +61,8 @@ class HoroscopoAgent:
                 content=html_final,
                 category_id=category_id,
                 featured_media=media_id,
-                status="publish",
+                status=self.cfg.post_status if self.cfg else "publish",
+                author=self.cfg.wp_author_id if self.cfg else None,
             )
             if post:
                 if dup_checker:
