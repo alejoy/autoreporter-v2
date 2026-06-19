@@ -9,16 +9,26 @@ class DuplicateChecker:
     Detecta noticias duplicadas usando:
     1. URL exacta (si está disponible)
     2. Similitud de título >= threshold (difflib)
+    3. Similitud semántica (embeddings) SOLO para títulos en "zona gris"
+       (fuzzy entre gray_zone_low y threshold) — detecta la misma noticia
+       cubierta por distintos medios con texto reescrito, que el fuzzy
+       matching de texto no puede ver. Se computa on-demand y se cachea
+       para no gastar cuota de API innecesariamente.
 
     El cache se construye al inicio desde WordPress (últimos N posts)
     y se actualiza en memoria durante el run. No persiste entre ejecuciones
     (GitHub Actions empieza en blanco cada vez) — WP es la fuente de verdad.
     """
 
-    def __init__(self, threshold: float = 0.85):
+    def __init__(self, threshold: float = 0.85, embedder=None,
+                 semantic_threshold: float = 0.90, gray_zone_low: float = 0.55):
         self.threshold = threshold
+        self.embedder = embedder                  # embedding_adapter.EmbeddingClient | None
+        self.semantic_threshold = semantic_threshold
+        self.gray_zone_low = gray_zone_low
         self._known_urls: set[str] = set()
         self._known_titles: list[str] = []
+        self._embedding_cache: dict[int, list[float] | None] = {}
 
     def load_from_wp(self, recent_posts: list[dict]) -> None:
         """Carga títulos y URLs de posts recientes obtenidos desde WP."""
@@ -50,8 +60,10 @@ class DuplicateChecker:
                 return True
             return False
 
-        # 2b. Verificar similitud de título (fuzzy)
-        for known in self._known_titles:
+        # 2b. Verificar similitud de título (fuzzy) — guardamos el mejor candidato
+        # de la "zona gris" para confirmarlo (o no) con embeddings.
+        best_ratio, best_idx = 0.0, -1
+        for i, known in enumerate(self._known_titles):
             ratio = difflib.SequenceMatcher(None, norm, known).ratio()
             if ratio >= self.threshold:
                 log.info(
@@ -59,8 +71,33 @@ class DuplicateChecker:
                     f"'{title[:60]}'"
                 )
                 return True
+            if ratio > best_ratio:
+                best_ratio, best_idx = ratio, i
+
+        # 3. Zona gris — posible paráfrasis de la misma noticia en otro medio
+        if self.embedder and best_idx >= 0 and self.gray_zone_low <= best_ratio < self.threshold:
+            sim = self._semantic_similarity(title, best_idx)
+            if sim is not None and sim >= self.semantic_threshold:
+                log.info(
+                    f"DUPLICADO semántico (similitud={sim:.0%}, fuzzy previo={best_ratio:.0%}): "
+                    f"'{title[:60]}'"
+                )
+                return True
 
         return False
+
+    def _semantic_similarity(self, title: str, known_idx: int) -> float | None:
+        from embedding_adapter import cosine_similarity
+        emb_new = self.embedder.embed(title)
+        if emb_new is None:
+            return None
+        emb_known = self._embedding_cache.get(known_idx)
+        if emb_known is None:
+            emb_known = self.embedder.embed(self._known_titles[known_idx])
+            self._embedding_cache[known_idx] = emb_known
+        if emb_known is None:
+            return None
+        return cosine_similarity(emb_new, emb_known)
 
     def mark_published(self, title: str, source_url: str = None) -> None:
         """Registra una nota como publicada en el cache en memoria."""

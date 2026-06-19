@@ -16,6 +16,8 @@ import db
 from utils.logger import get_logger
 from utils.wordpress_client import WordPressClient
 from utils.duplicate_checker import DuplicateChecker
+from embedding_adapter import EmbeddingClient
+from notifier import notify_if_needed
 
 from agents.municipal_agent   import MunicipalAgent
 from agents.provincial_agent  import ProvincialAgent
@@ -80,7 +82,12 @@ def main():
         log.error("No se pudieron cargar categorías de WordPress.")
         sys.exit(1)
 
-    dup_checker = DuplicateChecker(threshold=0.85)
+    embed_cfg = next((a.llm for a in agents_cfg if a.llm and a.llm.provider.lower() in ("gemini", "openai")), None)
+    embedder = EmbeddingClient(embed_cfg) if embed_cfg else None
+    if not embedder:
+        log.info("Sin proveedor de embeddings disponible — dedup solo por fuzzy matching.")
+
+    dup_checker = DuplicateChecker(threshold=0.85, embedder=embedder)
     recent_posts = wp.get_recent_posts(count=100)
     dup_checker.load_from_wp(recent_posts)
 
@@ -112,10 +119,11 @@ def main():
 
         time.sleep(3)
 
-    _print_report(all_results, dry_run)
+    totals = _print_report(all_results, dry_run)
+    notify_if_needed(pipeline.name, totals, dry_run)
 
 
-def _print_report(all_results: dict, dry_run: bool):
+def _print_report(all_results: dict, dry_run: bool) -> dict:
     log.info("\n" + "=" * 60)
     log.info(f"REPORTE FINAL {'[DRY-RUN]' if dry_run else ''}")
     log.info("=" * 60)
@@ -136,6 +144,7 @@ def _print_report(all_results: dict, dry_run: bool):
         f"Errores: {totals['error']} | "
         f"Dry-run: {totals['dry_run']}"
     )
+    return totals
 
 
 if __name__ == "__main__":

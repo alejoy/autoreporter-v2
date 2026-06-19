@@ -143,6 +143,8 @@ class BaseNewsAgent(ABC):
             self._log_db("error", f"Fallo subir imagen: {titulo[:80]}", titulo, status="error")
             return {"title": titulo, "status": "error", "reason": "fallo al subir imagen"}
 
+        meta_desc = self._build_meta_description(html_nota)
+
         if wp_client:
             post = wp_client.create_post(
                 title=titulo,
@@ -151,6 +153,8 @@ class BaseNewsAgent(ABC):
                 featured_media=media_id,
                 status=self.cfg.post_status,
                 author=self.cfg.wp_author_id,
+                excerpt=meta_desc,
+                meta_description=meta_desc,
             )
             if post:
                 if dup_checker:
@@ -309,6 +313,18 @@ Respondé SOLO con JSON válido, sin texto adicional:
         dia = DIAS_SEMANA.get(now.strftime("%A"), now.strftime("%A"))
         mes = MESES.get(now.strftime("%B"), now.strftime("%B"))
         return f"{dia} {now.strftime('%d')} de {mes} de {now.strftime('%Y')}"
+
+    @staticmethod
+    def _build_meta_description(html_nota: str, max_len: int = 155) -> str:
+        """Genera meta description (Yoast/RankMath/excerpt) a partir del primer párrafo,
+        sin pegarle otra llamada al LLM — barato y determinístico."""
+        texto = re.sub(r"<[^>]+>", " ", html_nota)
+        texto = re.sub(r"\s+", " ", texto).strip()
+        if len(texto) <= max_len:
+            return texto
+        recortado = texto[:max_len]
+        corte = recortado.rfind(" ")
+        return (recortado[:corte] if corte > 0 else recortado) + "…"
 
     @staticmethod
     def _strip_html(texto: str) -> str:

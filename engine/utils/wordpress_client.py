@@ -152,6 +152,8 @@ class WordPressClient:
         status: str = "draft",
         tags: list[int] | None = None,
         author: int | None = None,
+        excerpt: str | None = None,
+        meta_description: str | None = None,
     ) -> dict | None:
         payload: dict = {"title": title, "content": content, "status": status}
         if category_id:
@@ -162,6 +164,15 @@ class WordPressClient:
             payload["tags"] = tags
         if author:
             payload["author"] = author
+        if excerpt:
+            payload["excerpt"] = excerpt
+        if meta_description:
+            # Campos meta de Yoast SEO / RankMath, si el plugin los expone en REST.
+            # Si no están registrados con show_in_rest, WP los ignora silenciosamente.
+            payload["meta"] = {
+                "_yoast_wpseo_metadesc": meta_description,
+                "rank_math_description": meta_description,
+            }
 
         try:
             r = self._post_json("/wp-json/wp/v2/posts", json=payload)

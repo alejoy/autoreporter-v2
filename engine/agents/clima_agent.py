@@ -71,6 +71,8 @@ class ClimaAgent:
             self.log.warning("SKIP — no se pudo generar/subir imagen de placa.")
             return [{"title": titulo, "status": "error", "reason": "sin imagen destacada"}]
 
+        meta_desc = f"Pronóstico para Neuquén Capital del {fecha}: máxima de {clima['temp_max']}°C, {cielo_texto.lower()}."
+
         if wp_client:
             post = wp_client.create_post(
                 title=titulo,
@@ -79,6 +81,8 @@ class ClimaAgent:
                 featured_media=media_id,
                 status=self.cfg.post_status if self.cfg else "publish",
                 author=self.cfg.wp_author_id if self.cfg else None,
+                excerpt=meta_desc,
+                meta_description=meta_desc,
             )
             if post:
                 if dup_checker:
