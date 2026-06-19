@@ -57,6 +57,7 @@ CREATE TABLE agents (
     fallback_llm_config_id INTEGER   REFERENCES llm_configs(id) ON DELETE SET NULL,  -- proveedor de respaldo si el primario falla
     wp_author_id        INTEGER,                     -- ID de usuario WP que firma las publicaciones de este agente
     post_status         VARCHAR(10)  NOT NULL DEFAULT 'publish' CHECK (post_status IN ('publish','draft')),
+    extra_config        JSONB        NOT NULL DEFAULT '{}'::jsonb,  -- config específica del tipo: imagen_url (horoscopo), lat/lon/ciudad/smn_keywords (clima)
     active              BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()

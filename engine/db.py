@@ -44,6 +44,7 @@ class AgentConfig:
     llm_fallback: LLMConfig | None = None
     wp_author_id: int | None = None
     post_status: str = "publish"
+    extra_config: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -102,7 +103,7 @@ def load_pipeline(pipeline_id: int) -> PipelineConfig:
                        a.prompt_selection, a.prompt_writing,
                        a.keywords_required, a.keywords_skip,
                        a.max_topics, a.wp_category,
-                       a.wp_author_id, a.post_status,
+                       a.wp_author_id, a.post_status, a.extra_config,
                        l.id AS llm_id, l.provider, l.model_name,
                        l.api_key_enc, l.temperature, l.max_tokens,
                        lf.id AS fallback_id, lf.provider AS fallback_provider, lf.model_name AS fallback_model_name,
@@ -166,6 +167,7 @@ def load_pipeline(pipeline_id: int) -> PipelineConfig:
                     llm_fallback=llm_fallback,
                     wp_author_id=r["wp_author_id"],
                     post_status=r["post_status"] or "publish",
+                    extra_config=r["extra_config"] or {},
                 ))
 
     return pipeline

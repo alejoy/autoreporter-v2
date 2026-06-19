@@ -19,6 +19,8 @@ MESES = {
 
 class HoroscopoAgent:
     CATEGORY_NAME = "Generales"
+    _DEFAULT_IMAGEN_URL = "https://noticiasneuquen.com/wp-content/uploads/horoscope.avif"
+    _DEFAULT_TONO = "místico, inspirador y útil"
 
     def __init__(self, agent_cfg=None, pipeline_id: int = 0):
         self.cfg = agent_cfg
@@ -26,6 +28,10 @@ class HoroscopoAgent:
         self.name = agent_cfg.name if agent_cfg else "HoroscopoAgent"
         self.log = get_logger(self.name)
         self.llm = LLMAdapter(agent_cfg.llm, agent_cfg.llm_fallback) if agent_cfg and agent_cfg.llm else None
+
+        extra = agent_cfg.extra_config if agent_cfg else {}
+        self.imagen_url = extra.get("imagen_url", self._DEFAULT_IMAGEN_URL)
+        self.tono = extra.get("tono", self._DEFAULT_TONO)
 
     def run(self, wp_client, dup_checker, category_id: int | None, dry_run: bool = False) -> list[dict]:
         from datetime import datetime
@@ -72,13 +78,11 @@ class HoroscopoAgent:
 
         return [{"title": titulo_final, "status": "error", "reason": "sin wp_client"}]
 
-    IMAGEN_HOROSCOPO_URL = "https://noticiasneuquen.com/wp-content/uploads/horoscope.avif"
-
     def _generar_imagen_placa(self, fecha: str, wp_client) -> int | None:
-        """Descarga la imagen estática del horóscopo y la sube a WP."""
+        """Descarga la imagen estática del horóscopo (configurable por agente) y la sube a WP."""
         if not wp_client:
             return None
-        return wp_client.upload_media(self.IMAGEN_HOROSCOPO_URL)
+        return wp_client.upload_media(self.imagen_url)
 
     def _generar(self, fecha: str) -> str | None:
         prompt = f"""Actuá como una astróloga experta. Escribí el HORÓSCOPO para hoy: {fecha}.
@@ -87,7 +91,7 @@ REGLAS (HTML):
 1. NO saludes. Empezá DIRECTO con <h2> para "Energía Cósmica de Hoy" (breve resumen planetario).
 2. Luego un bloque por cada signo: <h3> con el nombre y emoji del signo, <p> con la predicción.
    Orden: Aries ♈, Tauro ♉, Géminis ♊, Cáncer ♋, Leo ♌, Virgo ♍, Libra ♎, Escorpio ♏, Sagitario ♐, Capricornio ♑, Acuario ♒, Piscis ♓.
-3. Tono: místico, inspirador y útil. Español neutro.
+3. Tono: {self.tono}. Español neutro.
 4. SOLO HTML, sin markdown."""
         if not self.llm:
             self.log.error("Sin LLM configurado para HoroscopoAgent.")

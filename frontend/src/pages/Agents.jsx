@@ -12,8 +12,50 @@ const empty = {
   keywords_required: [], keywords_skip: [],
   max_topics: 3, wp_category: '', llm_config_id: null,
   fallback_llm_config_id: null, wp_author_id: null, post_status: 'publish',
+  extra_config: {},
   active: true,
   feeds: [],
+}
+
+const EXTRA_CONFIG_HINTS = {
+  horoscopo: '{\n  "imagen_url": "https://tusitio.com/wp-content/uploads/horoscopo.jpg",\n  "tono": "místico, inspirador y útil"\n}',
+  clima: '{\n  "ciudad": "Bariloche",\n  "lat": -41.1335,\n  "lon": -71.3103,\n  "smn_keywords": ["bariloche", "rio negro", "andina"]\n}',
+}
+
+function ExtraConfigEditor({ agentType, value, onChange }) {
+  const [text, setText] = useState(JSON.stringify(value || {}, null, 2))
+  const [error, setError] = useState(null)
+
+  const handleChange = raw => {
+    setText(raw)
+    try {
+      onChange(raw.trim() ? JSON.parse(raw) : {})
+      setError(null)
+    } catch {
+      setError('JSON inválido — se ignora hasta que lo corrijas')
+    }
+  }
+
+  if (!['horoscopo', 'clima'].includes(agentType)) return null
+
+  return (
+    <div className="space-y-1.5">
+      <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide">
+        Configuración extra (JSON) — específica de "{agentType}"
+      </label>
+      <textarea
+        rows={5}
+        value={text}
+        onChange={e => handleChange(e.target.value)}
+        placeholder={EXTRA_CONFIG_HINTS[agentType]}
+        className="w-full font-mono bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-blue-500"
+      />
+      <p className="text-xs text-slate-500">
+        Ej: {EXTRA_CONFIG_HINTS[agentType].replace(/\n\s*/g, ' ')}
+      </p>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+    </div>
+  )
 }
 
 function FeedsEditor({ feeds, onChange }) {
@@ -114,6 +156,7 @@ export default function Agents() {
     fallback_llm_config_id: a.fallback_llm_config_id ?? null,
     wp_author_id: a.wp_author_id ?? null,
     post_status: a.post_status || 'publish',
+    extra_config: a.extra_config || {},
   }); setModal({ mode: 'edit', data: a }) }
 
   return (
@@ -211,6 +254,13 @@ export default function Agents() {
               <option value="draft">Guardar como borrador</option>
             </Select>
           </div>
+
+          <ExtraConfigEditor
+            key={modal?.data?.id || 'new'}
+            agentType={form.agent_type}
+            value={form.extra_config}
+            onChange={v => set('extra_config', v)}
+          />
 
           <KeywordsInput
             label="Keywords requeridas (al menos una en el titular)"
