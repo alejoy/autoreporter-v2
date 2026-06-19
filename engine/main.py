@@ -12,8 +12,11 @@ import sys
 import time
 import argparse
 
+import logging
+
 import db
 from utils.logger import get_logger
+from utils.db_log_handler import DBLogHandler
 from utils.wordpress_client import WordPressClient
 from utils.duplicate_checker import DuplicateChecker
 from embedding_adapter import EmbeddingClient
@@ -61,6 +64,11 @@ def main():
         sys.exit(1)
 
     log.info(f"Pipeline: {pipeline.name} → Sitio: {pipeline.site.name}")
+
+    # Espeja TODO lo que se imprime en la terminal (cualquier logger: Orchestrator,
+    # WordPressClient, DuplicateChecker, cada agente) también en run_logs.
+    agent_ids_by_name = {a.name: a.id for a in pipeline.agents}
+    logging.getLogger().addHandler(DBLogHandler(pipeline.id, agent_ids_by_name))
 
     dry_run = args.dry_run or pipeline.dry_run
 
