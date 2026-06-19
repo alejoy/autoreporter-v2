@@ -46,7 +46,7 @@ class EmbeddingClient:
     def _embed_gemini(self, text: str) -> list[float] | None:
         url = (
             "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"text-embedding-004:embedContent?key={self.cfg.api_key}"
+            f"gemini-embedding-001:embedContent?key={self.cfg.api_key}"
         )
         res = requests.post(url, json={"content": {"parts": [{"text": text}]}}, timeout=15)
         if res.status_code == 200:
