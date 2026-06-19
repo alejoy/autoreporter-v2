@@ -293,7 +293,7 @@ Respondé SOLO con JSON válido, sin texto adicional:
             titulo=titulo,
             contexto_redactor=self.cfg.prompt_writing,
         )
-        return self.llm.call(prompt, max_tokens=1500)
+        return self.llm.call(prompt, max_tokens=3000)
 
     # ── DB logging ──────────────────────────────────────────────────────────────
 

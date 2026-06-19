@@ -79,6 +79,9 @@ class LLMAdapter:
             "generationConfig": {
                 "temperature": cfg.temperature,
                 "maxOutputTokens": max_tokens,
+                # Gemini 2.5 gasta tokens de "thinking" del mismo presupuesto que
+                # maxOutputTokens; lo desactivamos para no truncar la respuesta real.
+                "thinkingConfig": {"thinkingBudget": 0},
             },
         }
         res = requests.post(url, json=payload,
