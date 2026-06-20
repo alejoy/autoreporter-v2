@@ -64,6 +64,8 @@ class LLMAdapter:
             return self._call_openai(cfg, prompt, max_tokens)
         if provider == "anthropic":
             return self._call_anthropic(cfg, prompt, max_tokens)
+        if provider == "openrouter":
+            return self._call_openrouter(cfg, prompt, max_tokens)
         raise ValueError(f"Proveedor LLM desconocido: {provider}")
 
     # ── Gemini ─────────────────────────────────────────────────────────────────
@@ -124,6 +126,32 @@ class LLMAdapter:
         if res.status_code == 429 or res.status_code >= 500:
             raise _RetryableLLMError(f"OpenAI HTTP {res.status_code}: {res.text[:300]}")
         _log.warning(f"OpenAI HTTP {res.status_code} (no reintentable): {res.text[:300]}")
+        return None
+
+    # ── OpenRouter (API compatible con OpenAI, agrega muchos proveedores) ───────
+
+    @_RETRY
+    def _call_openrouter(self, cfg, prompt: str, max_tokens: int) -> str | None:
+        payload = {
+            "model": cfg.model_name,  # ej: "google/gemini-2.0-flash-exp:free"
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": cfg.temperature,
+            "max_tokens": max_tokens,
+        }
+        res = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {cfg.api_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=30,
+        )
+        if res.status_code == 200:
+            return res.json()["choices"][0]["message"]["content"]
+        if res.status_code == 429 or res.status_code >= 500:
+            raise _RetryableLLMError(f"OpenRouter HTTP {res.status_code}: {res.text[:300]}")
+        _log.warning(f"OpenRouter HTTP {res.status_code} (no reintentable): {res.text[:300]}")
         return None
 
     # ── Anthropic ──────────────────────────────────────────────────────────────

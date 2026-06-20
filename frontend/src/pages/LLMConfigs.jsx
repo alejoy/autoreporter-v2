@@ -5,15 +5,17 @@ import { Card, Btn, Input, Select, Toggle, PageHeader, Modal, EmptyState, Badge 
 import { Plus, Settings, Pencil, Trash2 } from 'lucide-react'
 
 const PROVIDERS = [
-  { value: 'gemini',    label: 'Google Gemini' },
-  { value: 'openai',    label: 'OpenAI' },
-  { value: 'anthropic', label: 'Anthropic (Claude)' },
+  { value: 'gemini',     label: 'Google Gemini' },
+  { value: 'openai',     label: 'OpenAI' },
+  { value: 'anthropic',  label: 'Anthropic (Claude)' },
+  { value: 'openrouter', label: 'OpenRouter (multi-proveedor, tiene modelos gratis)' },
 ]
 
 const MODELS = {
-  gemini:    ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-1.5-flash'],
-  openai:    ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
-  anthropic: ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001', 'claude-opus-4-8'],
+  gemini:     ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-1.5-flash'],
+  openai:     ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
+  anthropic:  ['claude-sonnet-4-6', 'claude-haiku-4-5', 'claude-opus-4-8'],
+  openrouter: ['google/gemini-2.0-flash-exp:free', 'meta-llama/llama-3.1-8b-instruct:free', 'anthropic/claude-3.5-haiku'],
 }
 
 const empty = { name: '', provider: 'gemini', model_name: 'gemini-2.5-flash', api_key: '', temperature: 0.5, max_tokens: 1500, active: true }
