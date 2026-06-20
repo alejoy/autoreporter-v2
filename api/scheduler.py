@@ -1,6 +1,11 @@
 """
 Scheduler dinámico — carga todos los pipelines activos al arrancar
 y los reprograma automáticamente cuando se crean/editan/eliminan.
+
+IMPORTANTE: este módulo asume un único proceso uvicorn (--workers 1).
+BackgroundScheduler no tiene lock entre procesos — si la API corre con más
+de un worker, cada uno arranca su propia instancia y todos disparan el mismo
+cron al mismo tiempo, duplicando publicaciones. Ver deploy/install.sh.
 """
 import os
 import sys

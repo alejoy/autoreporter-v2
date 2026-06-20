@@ -146,7 +146,10 @@ User=www-data
 Group=www-data
 WorkingDirectory=${APP_DIR}
 EnvironmentFile=${APP_DIR}/.env
-ExecStart=${APP_DIR}/.venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8000 --workers 2
+# --workers 1 es obligatorio: el scheduler de pipelines (APScheduler) arranca
+# dentro del lifespan de la app y NO tiene lock entre procesos. Con más de un
+# worker, cada uno dispara su propio cron al mismo tiempo y duplica publicaciones.
+ExecStart=${APP_DIR}/.venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8000 --workers 1
 Restart=always
 RestartSec=5
 StandardOutput=journal
