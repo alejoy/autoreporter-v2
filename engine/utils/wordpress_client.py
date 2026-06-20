@@ -81,13 +81,11 @@ class WordPressClient:
                     filename = f"imagen-{int(time.time())}.{ext}"
 
                 log.info(f"Subiendo a WP media ({len(img_res.content)} bytes)...")
-                r = self._post_raw(
+                r = self._post_multipart(
                     "/wp-json/wp/v2/media",
-                    data=img_res.content,
-                    headers={
-                        "Content-Disposition": f'attachment; filename="{filename}"',
-                        "Content-Type": content_type,
-                    },
+                    filename=filename,
+                    file_bytes=img_res.content,
+                    content_type=content_type,
                 )
                 if r.status_code == 201:
                     media_id = r.json()["id"]
@@ -114,13 +112,11 @@ class WordPressClient:
         for attempt in range(1, max_attempts + 1):
             try:
                 log.info(f"Subiendo imagen bytes a WP (intento {attempt}/{max_attempts})...")
-                r = self._post_raw(
+                r = self._post_multipart(
                     "/wp-json/wp/v2/media",
-                    data=img_bytes,
-                    headers={
-                        "Content-Disposition": f'attachment; filename="{filename}"',
-                        "Content-Type": content_type,
-                    },
+                    filename=filename,
+                    file_bytes=img_bytes,
+                    content_type=content_type,
                 )
                 if r.status_code == 201:
                     media_id = r.json()["id"]
@@ -240,16 +236,24 @@ class WordPressClient:
                     time.sleep(wait)
         raise RuntimeError(f"POST {path} falló después de {max_attempts} intentos.")
 
-    def _post_raw(self, path: str, data: bytes, headers: dict) -> requests.Response:
+    def _post_multipart(self, path: str, filename: str, file_bytes: bytes,
+                         content_type: str) -> requests.Response:
+        """
+        Sube el archivo como multipart/form-data (lo que hace un browser/Postman),
+        en vez de POST con body crudo + Content-Disposition. Algunos WAFs/plugins
+        de seguridad bloquean ese segundo patrón porque se parece a un intento de
+        subir un webshell, incluso con credenciales válidas.
+        """
         url = self.base + path
         for attempt in range(3):
             try:
-                r = requests.post(url, data=data, headers=headers, auth=self.auth, timeout=60)
+                files = {"file": (filename, file_bytes, content_type)}
+                r = requests.post(url, files=files, auth=self.auth, timeout=60)
                 # Reintentar solo en 5xx (errores de servidor transitorios)
                 if r.status_code < 500:
                     return r
-                log.warning(f"POST RAW {path} HTTP {r.status_code} intento {attempt+1}/3")
+                log.warning(f"POST multipart {path} HTTP {r.status_code} intento {attempt+1}/3")
             except Exception as e:
-                log.warning(f"POST RAW {path} intento {attempt+1}/3 falló: {e}")
+                log.warning(f"POST multipart {path} intento {attempt+1}/3 falló: {e}")
             time.sleep(2 ** attempt)
-        raise RuntimeError(f"POST RAW {path} falló después de 3 intentos.")
+        raise RuntimeError(f"POST multipart {path} falló después de 3 intentos.")
