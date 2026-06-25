@@ -181,9 +181,7 @@ class BaseNewsAgent(ABC):
                 res = requests.get(url, headers=headers, timeout=10)
                 res.raise_for_status()
                 root = ET.fromstring(res.content)
-                for item in root.findall(".//item")[:6]:
-                    titulo = item.findtext("title", "").strip()
-                    link = item.findtext("link", "").strip()
+                for titulo, link in self._parse_feed_entries(root):
                     if not titulo or len(titulo) <= 10 or not link:
                         continue
                     titulo_lower = titulo.lower()
@@ -200,6 +198,42 @@ class BaseNewsAgent(ABC):
 
         self.log.info(f"{len(noticias)} noticias obtenidas.")
         return noticias[:15]
+
+    @staticmethod
+    def _parse_feed_entries(root) -> list[tuple[str, str]]:
+        """
+        Devuelve [(titulo, link), ...] desde RSS estándar (<item><title>/<link>).
+        Si el feed no tiene <item> (sitios sin RSS real que solo exponen un
+        sitemap.xml), cae a parsear <url><loc>/<lastmod> y deriva el título
+        del slug de la URL — suficiente señal para que el LLM elija temas.
+        """
+        items = root.findall(".//item")
+        if items:
+            entries = []
+            for item in items[:6]:
+                titulo = item.findtext("title", "").strip()
+                link = item.findtext("link", "").strip()
+                entries.append((titulo, link))
+            return entries
+
+        # Fallback: sitemap.xml (namespace de sitemaps.org)
+        ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+        urls = root.findall(".//sm:url", ns) or root.findall(".//url")
+        parsed = []
+        for u in urls:
+            loc = (u.findtext("sm:loc", "", ns) or u.findtext("loc", "")).strip()
+            lastmod = (u.findtext("sm:lastmod", "", ns) or u.findtext("lastmod", "")).strip()
+            if loc:
+                parsed.append((lastmod, loc))
+        parsed.sort(key=lambda x: x[0], reverse=True)  # más reciente primero
+
+        entries = []
+        for _, loc in parsed[:10]:
+            slug = loc.rstrip("/").split("/")[-1]
+            slug = re.sub(r"\.\w+$", "", slug)            # quita .htm/.html
+            titulo = slug.replace("-", " ").strip().capitalize()
+            entries.append((titulo, loc))
+        return entries
 
     # ── Artículo fuente ─────────────────────────────────────────────────────────
 
