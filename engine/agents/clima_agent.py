@@ -52,6 +52,9 @@ class ClimaAgent:
         self.lat = extra.get("lat", self._DEFAULT_LAT)
         self.lon = extra.get("lon", self._DEFAULT_LON)
         self.smn_keywords = {k.lower() for k in extra.get("smn_keywords", self._DEFAULT_SMN_KEYWORDS)}
+        # "clasico" = degradé full-bleed con temperatura gigante (placa original Neuquén)
+        # "moderno" = tarjeta redondeada sobre fondo claro, ícono protagonista
+        self.estilo = extra.get("estilo", "clasico")
 
     def run(self, wp_client, dup_checker, category_id: int | None, dry_run: bool = False) -> list[dict]:
         from datetime import datetime
@@ -207,110 +210,201 @@ ESTRUCTURA en HTML:
             return None
         try:
             import io
-            from PIL import Image, ImageDraw, ImageFont
-
-            W, H = 1200, 675
-
-            # Colores de fondo según condición
-            cielo_l = cielo_texto.lower()
-            if alertas:
-                top, bot = (180, 30, 30), (100, 0, 0)
-            elif "tormenta" in cielo_l:
-                top, bot = (50, 50, 100), (20, 20, 60)
-            elif "lluvia" in cielo_l or "llovizna" in cielo_l:
-                top, bot = (70, 120, 200), (30, 60, 130)
-            elif "nublado" in cielo_l:
-                top, bot = (120, 140, 160), (60, 80, 100)
-            else:  # despejado / soleado
-                top, bot = (79, 172, 254), (0, 90, 200)
-
-            # Gradiente vertical
-            img = Image.new("RGB", (W, H))
-            px = img.load()
-            for y in range(H):
-                r = int(top[0] + (bot[0] - top[0]) * y / H)
-                g = int(top[1] + (bot[1] - top[1]) * y / H)
-                b = int(top[2] + (bot[2] - top[2]) * y / H)
-                for x in range(W):
-                    px[x, y] = (r, g, b)
-
-            draw = ImageDraw.Draw(img)
-            white = (255, 255, 255)
-            cream = (230, 230, 230)
-
-            # Fuentes — fallbacks progresivos
-            def _font(size, bold=False):
-                paths = [
-                    f"/usr/share/fonts/truetype/dejavu/DejaVuSans{'-Bold' if bold else ''}.ttf",
-                    f"/usr/share/fonts/truetype/liberation/LiberationSans{'-Bold' if bold else ''}.ttf",
-                    f"/usr/share/fonts/truetype/freefont/FreeSans{'Bold' if bold else ''}.ttf",
-                ]
-                for p in paths:
-                    try:
-                        return ImageFont.truetype(p, size)
-                    except Exception:
-                        pass
-                return ImageFont.load_default()
-
-            f_loc   = _font(32)
-            f_temp  = _font(160, bold=True)
-            f_cielo = _font(52)
-            f_min   = _font(40)
-            f_label = _font(30)
-            f_val   = _font(36, bold=True)
-            f_alerta = _font(34, bold=True)
-
-            def center_text(text, y, font, color=white):
-                bbox = draw.textbbox((0, 0), text, font=font)
-                x = (W - (bbox[2] - bbox[0])) // 2
-                draw.text((x, y), text, font=font, fill=color)
-
-            # Ubicación y fecha
-            draw.text((50, 40), self.ciudad, font=f_loc, fill=cream)
-            fecha_bbox = draw.textbbox((0, 0), fecha, font=f_loc)
-            draw.text((W - fecha_bbox[2] + fecha_bbox[0] - 50, 40), fecha, font=f_loc, fill=cream)
-
-            # Temperatura principal
-            center_text(f"{clima['temp_max']}°C", 130, f_temp)
-
-            # Mín debajo de la máxima
-            center_text(f"min {clima['temp_min']}°C", 320, f_min, cream)
-
-            # Descripción del cielo
-            center_text(cielo_texto, 385, f_cielo)
-
-            # Banda de datos inferior
-            band_y = H - 140
-            draw.rectangle([(0, band_y), (W, H)], fill=(0, 0, 0, 80))
-
-            tercio = W // 3
-            datos = [
-                ("Rafagas", f"{clima['viento_rafagas']} km/h"),
-                ("Prob. lluvia", f"{clima['prob_lluvia']}%"),
-                ("Indice UV", str(clima['uv_index'])),
-            ]
-            for i, (label, val) in enumerate(datos):
-                cx = tercio * i + tercio // 2
-                lb = draw.textbbox((0, 0), label, font=f_label)
-                draw.text((cx - (lb[2] - lb[0]) // 2, band_y + 15), label, font=f_label, fill=cream)
-                vb = draw.textbbox((0, 0), val, font=f_val)
-                draw.text((cx - (vb[2] - vb[0]) // 2, band_y + 55), val, font=f_val, fill=white)
-
-            # Alerta si hay
-            if alertas:
-                alert_text = f"ALERTA: {alertas[0]['titulo'][:70]}"
-                draw.rectangle([(0, band_y - 60), (W, band_y)], fill=(180, 0, 0))
-                center_text(alert_text, band_y - 50, f_alerta)
-
-            buf = io.BytesIO()
-            img.save(buf, format="JPEG", quality=88)
+            if self.estilo == "moderno":
+                buf = self._render_moderna(clima, cielo_texto, icono, alertas, fecha)
+            else:
+                buf = self._render_clasica(clima, cielo_texto, icono, alertas, fecha)
             return wp_client.upload_media_bytes(buf.getvalue(), f"clima-{int(time.time())}.jpg")
-
         except ImportError:
             self.log.warning("Pillow no instalado — sin imagen de placa.")
         except Exception as e:
             self.log.warning(f"Error generando placa clima: {e}")
         return None
+
+    @staticmethod
+    def _font(size, bold=False):
+        from PIL import ImageFont
+        paths = [
+            f"/usr/share/fonts/truetype/dejavu/DejaVuSans{'-Bold' if bold else ''}.ttf",
+            f"/usr/share/fonts/truetype/liberation/LiberationSans{'-Bold' if bold else ''}.ttf",
+            f"/usr/share/fonts/truetype/freefont/FreeSans{'Bold' if bold else ''}.ttf",
+        ]
+        for p in paths:
+            try:
+                return ImageFont.truetype(p, size)
+            except Exception:
+                pass
+        return ImageFont.load_default()
+
+    def _render_clasica(self, clima, cielo_texto, icono, alertas, fecha):
+        """Placa original — degradé full-bleed, temperatura gigante centrada."""
+        import io
+        from PIL import Image, ImageDraw
+
+        W, H = 1200, 675
+
+        # Colores de fondo según condición
+        cielo_l = cielo_texto.lower()
+        if alertas:
+            top, bot = (180, 30, 30), (100, 0, 0)
+        elif "tormenta" in cielo_l:
+            top, bot = (50, 50, 100), (20, 20, 60)
+        elif "lluvia" in cielo_l or "llovizna" in cielo_l:
+            top, bot = (70, 120, 200), (30, 60, 130)
+        elif "nublado" in cielo_l:
+            top, bot = (120, 140, 160), (60, 80, 100)
+        else:  # despejado / soleado
+            top, bot = (79, 172, 254), (0, 90, 200)
+
+        # Gradiente vertical
+        img = Image.new("RGB", (W, H))
+        px = img.load()
+        for y in range(H):
+            r = int(top[0] + (bot[0] - top[0]) * y / H)
+            g = int(top[1] + (bot[1] - top[1]) * y / H)
+            b = int(top[2] + (bot[2] - top[2]) * y / H)
+            for x in range(W):
+                px[x, y] = (r, g, b)
+
+        draw = ImageDraw.Draw(img)
+        white = (255, 255, 255)
+        cream = (230, 230, 230)
+
+        f_loc    = self._font(32)
+        f_temp   = self._font(160, bold=True)
+        f_cielo  = self._font(52)
+        f_min    = self._font(40)
+        f_label  = self._font(30)
+        f_val    = self._font(36, bold=True)
+        f_alerta = self._font(34, bold=True)
+
+        def center_text(text, y, font, color=white):
+            bbox = draw.textbbox((0, 0), text, font=font)
+            x = (W - (bbox[2] - bbox[0])) // 2
+            draw.text((x, y), text, font=font, fill=color)
+
+        # Ubicación y fecha
+        draw.text((50, 40), self.ciudad, font=f_loc, fill=cream)
+        fecha_bbox = draw.textbbox((0, 0), fecha, font=f_loc)
+        draw.text((W - fecha_bbox[2] + fecha_bbox[0] - 50, 40), fecha, font=f_loc, fill=cream)
+
+        # Temperatura principal
+        center_text(f"{clima['temp_max']}°C", 130, f_temp)
+
+        # Mín debajo de la máxima
+        center_text(f"min {clima['temp_min']}°C", 320, f_min, cream)
+
+        # Descripción del cielo
+        center_text(cielo_texto, 385, f_cielo)
+
+        # Banda de datos inferior
+        band_y = H - 140
+        draw.rectangle([(0, band_y), (W, H)], fill=(0, 0, 0, 80))
+
+        tercio = W // 3
+        datos = [
+            ("Rafagas", f"{clima['viento_rafagas']} km/h"),
+            ("Prob. lluvia", f"{clima['prob_lluvia']}%"),
+            ("Indice UV", str(clima['uv_index'])),
+        ]
+        for i, (label, val) in enumerate(datos):
+            cx = tercio * i + tercio // 2
+            lb = draw.textbbox((0, 0), label, font=f_label)
+            draw.text((cx - (lb[2] - lb[0]) // 2, band_y + 15), label, font=f_label, fill=cream)
+            vb = draw.textbbox((0, 0), val, font=f_val)
+            draw.text((cx - (vb[2] - vb[0]) // 2, band_y + 55), val, font=f_val, fill=white)
+
+        # Alerta si hay
+        if alertas:
+            alert_text = f"ALERTA: {alertas[0]['titulo'][:70]}"
+            draw.rectangle([(0, band_y - 60), (W, band_y)], fill=(180, 0, 0))
+            center_text(alert_text, band_y - 50, f_alerta)
+
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=88)
+        buf.seek(0)
+        return buf
+
+    def _render_moderna(self, clima, cielo_texto, icono, alertas, fecha):
+        """Estilo alternativo — tarjeta redondeada sobre fondo claro, ícono protagonista."""
+        import io
+        from PIL import Image, ImageDraw
+
+        W, H = 1200, 675
+        bg = (244, 241, 234)  # crema suave
+        accent_map = {
+            "tormenta": (220, 90, 60), "lluvia": (60, 130, 200), "llovizna": (60, 130, 200),
+            "nublado": (140, 140, 150), "niebla": (150, 150, 160),
+        }
+        cielo_l = cielo_texto.lower()
+        accent = (220, 60, 60) if alertas else next(
+            (c for k, c in accent_map.items() if k in cielo_l), (235, 160, 50)  # soleado/despejado default
+        )
+
+        img = Image.new("RGB", (W, H), bg)
+        draw = ImageDraw.Draw(img)
+        ink = (45, 42, 38)
+        muted = (120, 115, 105)
+
+        f_loc    = self._font(28)
+        f_temp   = self._font(110, bold=True)
+        f_cielo  = self._font(40)
+        f_label  = self._font(24)
+        f_val    = self._font(32, bold=True)
+        f_alerta = self._font(24, bold=True)
+
+        def center_text(text, y, font, color=ink, cx=None):
+            bbox = draw.textbbox((0, 0), text, font=font)
+            x = (cx or W // 2) - (bbox[2] - bbox[0]) // 2
+            draw.text((x, y), text, font=font, fill=color)
+
+        # Tarjeta principal redondeada
+        margin = 60
+        card = (margin, margin, W - margin, H - margin)
+        draw.rounded_rectangle(card, radius=40, fill=(255, 255, 255))
+        draw.rounded_rectangle((margin, margin, W - margin, margin + 14), radius=8, fill=accent)
+
+        # Encabezado: ciudad + fecha
+        draw.text((margin + 50, margin + 40), self.ciudad.upper(), font=f_loc, fill=muted)
+        fecha_bbox = draw.textbbox((0, 0), fecha, font=f_loc)
+        draw.text((W - margin - 50 - (fecha_bbox[2] - fecha_bbox[0]), margin + 40), fecha, font=f_loc, fill=muted)
+
+        # Insignia circular a la izquierda (no usamos el emoji como texto — muchos
+        # caracteres de WMO_MAP son de planos Unicode altos que DejaVuSans no tiene,
+        # y se ven como cuadrados vacíos), temperatura grande a la derecha
+        badge_cx, badge_cy, badge_r = W // 2 - 220, 250, 95
+        draw.ellipse(
+            (badge_cx - badge_r, badge_cy - badge_r, badge_cx + badge_r, badge_cy + badge_r),
+            fill=tuple(min(255, c + 25) for c in accent), outline=accent, width=6,
+        )
+        center_text(f"{clima['temp_max']}°", 190, f_temp, color=accent, cx=W // 2 + 180)
+        center_text(f"mín {clima['temp_min']}°C", 320, self._font(28), color=muted, cx=W // 2 + 180)
+        center_text(cielo_texto, 370, f_cielo)
+
+        # Alerta — va arriba de la línea separadora, nunca pisa la fila de stats
+        if alertas:
+            alert_text = f"ALERTA: {alertas[0]['titulo'][:55]}"
+            draw.rounded_rectangle((margin + 40, 425, W - margin - 40, 472), radius=14, fill=(255, 235, 235))
+            center_text(alert_text, 437, f_alerta, color=(180, 30, 30))
+
+        # Fila de stats con separadores
+        band_y = H - margin - 130
+        draw.line([(margin + 50, band_y), (W - margin - 50, band_y)], fill=(230, 226, 218), width=2)
+        tercio = (W - 2 * margin) // 3
+        datos = [
+            ("RÁFAGAS", f"{clima['viento_rafagas']} km/h"),
+            ("PROB. LLUVIA", f"{clima['prob_lluvia']}%"),
+            ("ÍNDICE UV", str(clima['uv_index'])),
+        ]
+        for i, (label, val) in enumerate(datos):
+            cx = margin + tercio * i + tercio // 2
+            center_text(label, band_y + 30, f_label, color=muted, cx=cx)
+            center_text(val, band_y + 65, f_val, color=ink, cx=cx)
+
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=88)
+        buf.seek(0)
+        return buf
 
     def _build_html(self, clima, cielo_texto, icono, alertas, fecha, redaccion) -> str:
         redaccion = redaccion.replace("```html", "").replace("```", "").strip()
