@@ -367,6 +367,7 @@ Respondé SOLO con JSON válido, sin texto adicional:
     @staticmethod
     def _strip_html(texto: str) -> str:
         texto = re.sub(r"<[^>]+>", "", texto or "")
+        texto = html_unescape(texto)  # &oacute; -> ó, &ntilde; -> ñ, &amp; -> &, etc.
         return re.sub(r"\s+", " ", texto).strip()
 
     @staticmethod
