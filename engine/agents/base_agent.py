@@ -230,6 +230,10 @@ class BaseNewsAgent(ABC):
             limpios = [t for t in limpios if self._es_parrafo_noticia(t)]
             texto = "\n\n".join(limpios[:20])
 
+            self.log.info(f"Texto extraído: {len(texto)} caracteres ({len(limpios)} párrafos) de {url}")
+            if len(texto) < 200:
+                self.log.warning(f"Texto fuente muy corto ({len(texto)} caracteres) — probable fallo de scraping en {url}")
+
         except Exception as e:
             self.log.warning(f"Error descargando artículo {url}: {e}")
 
