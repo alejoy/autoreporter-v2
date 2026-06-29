@@ -22,20 +22,22 @@ from utils.duplicate_checker import DuplicateChecker
 from embedding_adapter import EmbeddingClient
 from notifier import notify_if_needed
 
-from agents.municipal_agent   import MunicipalAgent
-from agents.provincial_agent  import ProvincialAgent
-from agents.nacional_agent    import NacionalAgent
-from agents.sociedad_agent    import SociedadAgent
-from agents.horoscopo_agent   import HoroscopoAgent
-from agents.clima_agent       import ClimaAgent
+from agents.municipal_agent      import MunicipalAgent
+from agents.provincial_agent     import ProvincialAgent
+from agents.nacional_agent       import NacionalAgent
+from agents.sociedad_agent       import SociedadAgent
+from agents.internacional_agent  import InternacionalAgent
+from agents.horoscopo_agent      import HoroscopoAgent
+from agents.clima_agent          import ClimaAgent
 
 AGENT_CLASS_MAP = {
-    "municipal":  MunicipalAgent,
-    "provincial": ProvincialAgent,
-    "nacional":   NacionalAgent,
-    "sociedad":   SociedadAgent,
-    "horoscopo":  HoroscopoAgent,
-    "clima":      ClimaAgent,
+    "municipal":     MunicipalAgent,
+    "provincial":    ProvincialAgent,
+    "nacional":      NacionalAgent,
+    "sociedad":      SociedadAgent,
+    "internacional": InternacionalAgent,
+    "horoscopo":     HoroscopoAgent,
+    "clima":         ClimaAgent,
 }
 
 log = get_logger("Orchestrator")
