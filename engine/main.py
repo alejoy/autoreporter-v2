@@ -47,6 +47,8 @@ def parse_args():
     parser.add_argument("--dry-run", action="store_true", help="Simula sin publicar en WordPress")
     parser.add_argument("--agents", nargs="+", metavar="TYPE",
                         help="Tipos de agente a ejecutar (ej: municipal clima). Por defecto: todos los del pipeline.")
+    parser.add_argument("--agent-id", type=int, metavar="ID",
+                        help="Corre un único agente por su ID exacto (útil para debug, ignora --agents).")
     return parser.parse_args()
 
 
@@ -73,7 +75,12 @@ def main():
     dry_run = args.dry_run or pipeline.dry_run
 
     agents_cfg = pipeline.agents
-    if args.agents:
+    if args.agent_id:
+        agents_cfg = [a for a in agents_cfg if a.id == args.agent_id]
+        if not agents_cfg:
+            log.error(f"Ningún agente con id={args.agent_id} en este pipeline.")
+            sys.exit(1)
+    elif args.agents:
         tipos_filtro = {t.lower() for t in args.agents}
         agents_cfg = [a for a in agents_cfg if a.agent_type.lower() in tipos_filtro]
         if not agents_cfg:
