@@ -226,19 +226,35 @@ class BaseNewsAgent(ABC):
         return candidatos[0][1]
 
     @staticmethod
-    def _parse_feed_entries(root) -> list[tuple[str, str]]:
+    def _local_name(tag: str) -> str:
+        """'{http://purl.org/rss/1.0/}item' -> 'item' (ignora el namespace)."""
+        return tag.rsplit("}", 1)[-1]
+
+    @classmethod
+    def _find_any_ns(cls, elem, tag: str):
+        """findtext que ignora namespaces — necesario para RSS 1.0/RDF (DW, etc.)
+        donde <item>/<title>/<link> vienen bajo un namespace por defecto."""
+        for child in elem:
+            if cls._local_name(child.tag) == tag:
+                return (child.text or "").strip()
+        return ""
+
+    @classmethod
+    def _parse_feed_entries(cls, root) -> list[tuple[str, str]]:
         """
-        Devuelve [(titulo, link), ...] desde RSS estándar (<item><title>/<link>).
-        Si el feed no tiene <item> (sitios sin RSS real que solo exponen un
-        sitemap.xml), cae a parsear <url><loc>/<lastmod> y deriva el título
-        del slug de la URL — suficiente señal para que el LLM elija temas.
+        Devuelve [(titulo, link), ...] desde RSS estándar (<item><title>/<link>),
+        sea RSS 2.0 (sin namespace) o RSS 1.0/RDF (con namespace por defecto,
+        ej. Deutsche Welle). Si el feed no tiene <item> (sitios sin RSS real
+        que solo exponen un sitemap.xml), cae a parsear <url><loc>/<lastmod>
+        y deriva el título del slug de la URL — suficiente señal para que el
+        LLM elija temas.
         """
-        items = root.findall(".//item")
+        items = [el for el in root.iter() if cls._local_name(el.tag) == "item"]
         if items:
             entries = []
             for item in items[:6]:
-                titulo = item.findtext("title", "").strip()
-                link = item.findtext("link", "").strip()
+                titulo = cls._find_any_ns(item, "title")
+                link = cls._find_any_ns(item, "link")
                 entries.append((titulo, link))
             return entries
 
