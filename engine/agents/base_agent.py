@@ -181,6 +181,16 @@ class BaseNewsAgent(ABC):
                 res = requests.get(url, headers=headers, timeout=10)
                 res.raise_for_status()
                 root = ET.fromstring(res.content)
+
+                # Sitemap índice (apunta a sub-sitemaps en vez de listar URLs
+                # directamente) — seguimos el sub-sitemap modificado más reciente.
+                if root.tag.endswith("sitemapindex"):
+                    sub_url = self._most_recent_sitemap(root)
+                    if sub_url:
+                        sub_res = requests.get(sub_url, headers=headers, timeout=10)
+                        sub_res.raise_for_status()
+                        root = ET.fromstring(sub_res.content)
+
                 for titulo, link in self._parse_feed_entries(root):
                     if not titulo or len(titulo) <= 10 or not link:
                         continue
@@ -198,6 +208,22 @@ class BaseNewsAgent(ABC):
 
         self.log.info(f"{len(noticias)} noticias obtenidas.")
         return noticias[:15]
+
+    @staticmethod
+    def _most_recent_sitemap(root) -> str | None:
+        """De un <sitemapindex>, devuelve la <loc> del <sitemap> con <lastmod> más reciente."""
+        ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+        subs = root.findall(".//sm:sitemap", ns) or root.findall(".//sitemap")
+        candidatos = []
+        for s in subs:
+            loc = (s.findtext("sm:loc", "", ns) or s.findtext("loc", "")).strip()
+            lastmod = (s.findtext("sm:lastmod", "", ns) or s.findtext("lastmod", "")).strip()
+            if loc:
+                candidatos.append((lastmod, loc))
+        if not candidatos:
+            return None
+        candidatos.sort(key=lambda x: x[0], reverse=True)
+        return candidatos[0][1]
 
     @staticmethod
     def _parse_feed_entries(root) -> list[tuple[str, str]]:
@@ -228,7 +254,7 @@ class BaseNewsAgent(ABC):
         parsed.sort(key=lambda x: x[0], reverse=True)  # más reciente primero
 
         entries = []
-        for _, loc in parsed[:10]:
+        for _, loc in parsed[:25]:  # portales generales mezclan temas — más margen para que el filtro de keywords encuentre algo
             slug = loc.rstrip("/").split("/")[-1]
             slug = re.sub(r"\.\w+$", "", slug)            # quita .htm/.html
             titulo = slug.replace("-", " ").strip().capitalize()
