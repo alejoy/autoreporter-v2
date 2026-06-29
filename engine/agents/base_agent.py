@@ -254,7 +254,7 @@ class BaseNewsAgent(ABC):
         parsed.sort(key=lambda x: x[0], reverse=True)  # más reciente primero
 
         entries = []
-        for _, loc in parsed[:25]:  # portales generales mezclan temas — más margen para que el filtro de keywords encuentre algo
+        for _, loc in parsed[:50]:  # portales generales mezclan temas — más margen para que el filtro de keywords encuentre algo
             slug = loc.rstrip("/").split("/")[-1]
             slug = re.sub(r"\.\w+$", "", slug)            # quita .htm/.html
             titulo = slug.replace("-", " ").strip().capitalize()
