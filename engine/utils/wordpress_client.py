@@ -1,9 +1,13 @@
+import io
 import requests
 import time
 import re
 from utils.logger import get_logger
 
 log = get_logger("WordPressClient")
+
+MAX_IMG_WIDTH = 1200
+JPEG_QUALITY = 82
 
 
 class WordPressClient:
@@ -55,6 +59,44 @@ class WordPressClient:
     # ------------------------------------------------------------------ #
     #  Media                                                               #
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def _optimize_image(img_bytes: bytes, content_type: str) -> tuple[bytes, str, str]:
+        """
+        Redimensiona a MAX_IMG_WIDTH y recodifica a JPEG (calidad JPEG_QUALITY)
+        para reducir peso antes de subir a WP. Si Pillow no está disponible o
+        la imagen no se puede procesar (ej. GIF animado), devuelve el original
+        sin tocar.
+        """
+        try:
+            from PIL import Image
+        except ImportError:
+            log.warning("Pillow no instalado — subiendo imagen sin optimizar.")
+            return img_bytes, "imagen.jpg", content_type
+
+        try:
+            img = Image.open(io.BytesIO(img_bytes))
+            if getattr(img, "is_animated", False):  # GIF animado: no tocar
+                return img_bytes, "imagen.gif", content_type
+
+            if img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+
+            if img.width > MAX_IMG_WIDTH:
+                ratio = MAX_IMG_WIDTH / img.width
+                img = img.resize((MAX_IMG_WIDTH, int(img.height * ratio)), Image.LANCZOS)
+
+            out = io.BytesIO()
+            img.save(out, format="JPEG", quality=JPEG_QUALITY, optimize=True)
+            optimized = out.getvalue()
+
+            if len(optimized) < len(img_bytes):
+                log.info(f"Imagen optimizada: {len(img_bytes)} → {len(optimized)} bytes")
+                return optimized, "imagen.jpg", "image/jpeg"
+            return img_bytes, "imagen.jpg", content_type
+        except Exception as e:
+            log.warning(f"No se pudo optimizar imagen ({e}) — subiendo original.")
+            return img_bytes, "imagen.jpg", content_type
+
     def upload_media(self, img_url: str, max_attempts: int = 3) -> int | None:
         """
         Descarga una imagen desde img_url y la sube a WP.
@@ -80,11 +122,15 @@ class WordPressClient:
                 if not any(filename.lower().endswith(e) for e in allowed_exts):
                     filename = f"imagen-{int(time.time())}.{ext}"
 
-                log.info(f"Subiendo a WP media ({len(img_res.content)} bytes)...")
+                file_bytes, opt_filename, content_type = self._optimize_image(img_res.content, content_type)
+                if opt_filename == "imagen.jpg" and not filename.lower().endswith(("jpg", "jpeg")):
+                    filename = re.sub(r"\.\w+$", ".jpg", filename) if "." in filename else f"{filename}.jpg"
+
+                log.info(f"Subiendo a WP media ({len(file_bytes)} bytes)...")
                 r = self._post_multipart(
                     "/wp-json/wp/v2/media",
                     filename=filename,
-                    file_bytes=img_res.content,
+                    file_bytes=file_bytes,
                     content_type=content_type,
                 )
                 if r.status_code == 201:
