@@ -27,6 +27,7 @@ from agents.provincial_agent     import ProvincialAgent
 from agents.nacional_agent       import NacionalAgent
 from agents.sociedad_agent       import SociedadAgent
 from agents.internacional_agent  import InternacionalAgent
+from agents.deportes_agent       import DeportesAgent
 from agents.horoscopo_agent      import HoroscopoAgent
 from agents.clima_agent          import ClimaAgent
 
@@ -36,6 +37,7 @@ AGENT_CLASS_MAP = {
     "nacional":      NacionalAgent,
     "sociedad":      SociedadAgent,
     "internacional": InternacionalAgent,
+    "deportes":      DeportesAgent,
     "horoscopo":     HoroscopoAgent,
     "clima":         ClimaAgent,
 }

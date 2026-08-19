@@ -4,7 +4,7 @@ import { getAgents, createAgent, updateAgent, deleteAgent, getLLMConfigs } from 
 import { Card, Btn, Input, Textarea, Select, Toggle, PageHeader, Modal, EmptyState, Badge } from '../components/ui'
 import { Plus, Bot, Pencil, Trash2, Link, X } from 'lucide-react'
 
-const AGENT_TYPES = ['municipal','provincial','nacional','internacional','sociedad','clima','horoscopo']
+const AGENT_TYPES = ['municipal','provincial','nacional','internacional','sociedad','deportes','clima','horoscopo']
 
 const empty = {
   name: '', agent_type: 'nacional',
