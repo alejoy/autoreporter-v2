@@ -1,4 +1,5 @@
 import json
+import math
 import re
 import time
 import requests
@@ -23,6 +24,15 @@ WMO_MAP = {
     51: ("Llovizna leve", "🌦️"), 61: ("Lluvia leve", "🌧️"), 63: ("Lluvia moderada", "🌧️"),
     65: ("Lluvia fuerte", "🌧️"), 80: ("Chubascos", "🌦️"), 81: ("Chubascos moderados", "🌦️"),
     95: ("Tormenta", "⛈️"), 96: ("Tormenta con granizo", "⛈️"), 99: ("Tormenta severa", "⛈️"),
+}
+
+# Mapea código WMO a una de las 6 categorías de ícono/paleta que soporta el
+# estilo "profesional" (_render_profesional). No hace falta 1:1 con WMO_MAP.
+WMO_TO_ICON = {
+    0: "despejado", 1: "parcial", 2: "parcial", 3: "nublado",
+    45: "niebla", 48: "niebla",
+    51: "lluvia", 61: "lluvia", 63: "lluvia", 65: "lluvia", 80: "lluvia", 81: "lluvia",
+    95: "tormenta", 96: "tormenta", 99: "tormenta",
 }
 
 
@@ -52,8 +62,11 @@ class ClimaAgent:
         self.lat = extra.get("lat", self._DEFAULT_LAT)
         self.lon = extra.get("lon", self._DEFAULT_LON)
         self.smn_keywords = {k.lower() for k in extra.get("smn_keywords", self._DEFAULT_SMN_KEYWORDS)}
-        # "clasico" = degradé full-bleed con temperatura gigante (placa original Neuquén)
-        # "moderno" = tarjeta redondeada sobre fondo claro, ícono protagonista
+        # "clasico"      = degradé full-bleed con temperatura gigante (placa original Neuquén)
+        # "moderno"      = tarjeta redondeada sobre fondo claro, ícono protagonista
+        # "profesional"  = gradiente diagonal + viñeta, íconos vectoriales propios
+        #                  (sol/nube/lluvia/tormenta/niebla dibujados a mano, sin
+        #                  depender de emoji ni fuentes especiales), glass bar de stats
         self.estilo = extra.get("estilo", "clasico")
 
     def run(self, wp_client, dup_checker, category_id: int | None, dry_run: bool = False) -> list[dict]:
@@ -210,7 +223,9 @@ ESTRUCTURA en HTML:
             return None
         try:
             import io
-            if self.estilo == "moderno":
+            if self.estilo == "profesional":
+                buf = self._render_profesional(clima, cielo_texto, icono, alertas, fecha)
+            elif self.estilo == "moderno":
                 buf = self._render_moderna(clima, cielo_texto, icono, alertas, fecha)
             else:
                 buf = self._render_clasica(clima, cielo_texto, icono, alertas, fecha)
@@ -403,6 +418,232 @@ ESTRUCTURA en HTML:
 
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=88)
+        buf.seek(0)
+        return buf
+
+    # ------------------------------------------------------------------ #
+    #  Estilo "profesional" — gradiente + viñeta + íconos vectoriales      #
+    # ------------------------------------------------------------------ #
+    _PALETAS_PRO = {
+        # condicion: (top, bottom, color_acento_icono)
+        "despejado": ((30, 100, 190), (10, 40, 95), (255, 200, 70)),
+        "parcial":   ((45, 95, 165), (20, 50, 100), (235, 225, 210)),
+        "nublado":   ((90, 105, 125), (45, 55, 70), (225, 228, 232)),
+        "lluvia":    ((35, 70, 110), (15, 30, 55), (150, 200, 235)),
+        "tormenta":  ((35, 35, 65), (10, 10, 25), (255, 215, 90)),
+        "niebla":    ((110, 118, 128), (70, 76, 85), (235, 236, 238)),
+        "alerta":    ((150, 25, 25), (70, 8, 8), (255, 220, 210)),
+    }
+
+    @staticmethod
+    def _diagonal_gradient(w, h, top, bottom):
+        from PIL import Image
+        base = Image.new("RGB", (1, h * 2))
+        for y in range(h * 2):
+            t = y / max(h * 2 - 1, 1)
+            base.putpixel((0, y), (
+                round(top[0] + (bottom[0] - top[0]) * t),
+                round(top[1] + (bottom[1] - top[1]) * t),
+                round(top[2] + (bottom[2] - top[2]) * t),
+            ))
+        base = base.resize((1, h * 2))
+        img = Image.new("RGB", (w, h))
+        px_src, px = base.load(), img.load()
+        for y in range(h):
+            for x in range(w):
+                idx = min(h * 2 - 1, y + int((x / w) * h * 0.6))
+                px[x, y] = px_src[0, idx]
+        return img
+
+    @staticmethod
+    def _add_vignette(img, strength=55):
+        from PIL import Image, ImageDraw, ImageFilter
+        w, h = img.size
+        vig = Image.new("L", (w, h), 0)
+        ImageDraw.Draw(vig).ellipse((-w * 0.25, -h * 0.35, w * 1.25, h * 1.35), fill=255)
+        vig = vig.filter(ImageFilter.GaussianBlur(120))
+        dark = Image.new("RGB", (w, h), (0, 0, 0))
+        return Image.composite(img, dark, vig.point(lambda p: 255 - int((255 - p) * strength / 100)))
+
+    @staticmethod
+    def _cloud_shape(d, cx, cy, scale, color):
+        fill = color if len(color) == 4 else color + (255,)
+        d.ellipse((cx - 0.34*scale, cy - 0.05*scale, cx + 0.06*scale, cy + 0.30*scale), fill=fill)
+        d.ellipse((cx - 0.10*scale, cy - 0.22*scale, cx + 0.34*scale, cy + 0.22*scale), fill=fill)
+        d.ellipse((cx + 0.10*scale, cy - 0.02*scale, cx + 0.46*scale, cy + 0.30*scale), fill=fill)
+        d.rounded_rectangle((cx - 0.34*scale, cy + 0.08*scale, cx + 0.46*scale, cy + 0.30*scale),
+                             radius=0.11*scale, fill=fill)
+
+    @classmethod
+    def _icon_canvas(cls, size, ss=4):
+        from PIL import Image, ImageDraw
+        s = size * ss
+        im = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+        return im, ImageDraw.Draw(im), s, size
+
+    @classmethod
+    def _draw_icon(cls, condicion, size, accent):
+        from PIL import Image
+        accent = accent if len(accent) == 4 else accent + (255,)
+
+        if condicion == "despejado":
+            im, d, s, out = cls._icon_canvas(size)
+            cx, cy, r = s / 2, s / 2, s * 0.22
+            for i in range(8):
+                ang = i * math.pi / 4
+                x1, y1 = cx + math.cos(ang) * r * 1.35, cy + math.sin(ang) * r * 1.35
+                x2, y2 = cx + math.cos(ang) * r * 2.05, cy + math.sin(ang) * r * 2.05
+                w = s * 0.035
+                d.line([(x1, y1), (x2, y2)], fill=accent, width=int(w))
+                d.ellipse((x2 - w/2, y2 - w/2, x2 + w/2, y2 + w/2), fill=accent)
+            d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=accent)
+
+        elif condicion == "parcial":
+            im, d, s, out = cls._icon_canvas(size)
+            sun_r = s * 0.16
+            scx, scy = s * 0.34, s * 0.34
+            for i in range(8):
+                ang = i * math.pi / 4
+                x1, y1 = scx + math.cos(ang) * sun_r * 1.3, scy + math.sin(ang) * sun_r * 1.3
+                x2, y2 = scx + math.cos(ang) * sun_r * 1.85, scy + math.sin(ang) * sun_r * 1.85
+                d.line([(x1, y1), (x2, y2)], fill=accent, width=int(s * 0.03))
+            d.ellipse((scx - sun_r, scy - sun_r, scx + sun_r, scy + sun_r), fill=accent)
+            cls._cloud_shape(d, s * 0.56, s * 0.58, s * 1.05, (235, 238, 242, 255))
+
+        elif condicion == "lluvia":
+            im, d, s, out = cls._icon_canvas(size)
+            cls._cloud_shape(d, s * 0.5, s * 0.40, s * 0.95, (210, 218, 228, 255))
+            for i, dx in enumerate((-0.14, 0.02, 0.18)):
+                x = s * 0.5 + dx * s
+                y0 = s * 0.66
+                y1 = y0 + s * (0.16 if i != 1 else 0.22)
+                d.line([(x, y0), (x - s*0.04, y1)], fill=accent, width=int(s * 0.028))
+
+        elif condicion in ("tormenta", "alerta"):
+            im, d, s, out = cls._icon_canvas(size)
+            cloud_color = (200, 200, 215, 255) if condicion == "tormenta" else (235, 210, 210, 255)
+            cls._cloud_shape(d, s * 0.5, s * 0.38, s * 0.95, cloud_color)
+            pts = [(s*0.56, s*0.55), (s*0.44, s*0.72), (s*0.52, s*0.72), (s*0.42, s*0.92),
+                   (s*0.62, s*0.68), (s*0.53, s*0.68)]
+            d.polygon(pts, fill=accent)
+
+        elif condicion == "niebla":
+            im, d, s, out = cls._icon_canvas(size)
+            for i, y in enumerate((0.38, 0.5, 0.62)):
+                w = s * (0.62 if i != 1 else 0.78)
+                x0 = (s - w) / 2
+                d.rounded_rectangle((x0, s*y, x0 + w, s*y + s*0.055), radius=s*0.03, fill=(225, 228, 232, 255))
+
+        else:  # nublado / fallback
+            im, d, s, out = cls._icon_canvas(size)
+            cls._cloud_shape(d, s * 0.5, s * 0.52, s, (225, 228, 232, 255))
+
+        return im.resize((out, out), Image.LANCZOS)
+
+    @staticmethod
+    def _condicion_label(c: str) -> str:
+        return {
+            "despejado": "Despejado", "parcial": "Parcialmente nublado", "nublado": "Nublado",
+            "lluvia": "Lluvia", "tormenta": "Tormenta", "niebla": "Niebla",
+        }.get(c, c.capitalize())
+
+    def _tracked_text(self, draw, xy, text, fnt, fill, tracking=0):
+        x, y = xy
+        for ch in text:
+            draw.text((x, y), ch, font=fnt, fill=fill)
+            x += draw.textlength(ch, font=fnt) + tracking
+
+    def _render_profesional(self, clima, cielo_texto, icono, alertas, fecha):
+        """
+        Placa "profesional" — gradiente diagonal con viñeta, íconos vectoriales
+        dibujados a mano (sin depender de emoji ni fuentes especiales, que en
+        estilos previos se veían como cuadros vacíos en Pillow/DejaVuSans), y
+        una banda inferior tipo "glass" translúcida con las 3 métricas clave.
+
+        Nota de implementación: todo lo semi-transparente (glass bar, banner de
+        alerta) se dibuja sobre una capa RGBA transparente aparte y se compone
+        una sola vez al final con alpha_composite — ImageDraw no mezcla alpha
+        contra lo ya pintado si se dibuja directo sobre el lienzo base.
+        """
+        import io
+        from PIL import Image, ImageDraw
+
+        W, H = 1200, 675
+        alerta_txt = alertas[0]["titulo"] if alertas else None
+        condicion = WMO_TO_ICON.get(clima["codigo_wmo"], "parcial")
+        key = "alerta" if alerta_txt else condicion
+        top, bottom, accent = self._PALETAS_PRO.get(key, self._PALETAS_PRO["parcial"])
+
+        bg = self._diagonal_gradient(W, H, top, bottom)
+        bg = self._add_vignette(bg, strength=55)
+        base = bg.convert("RGBA")
+
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+
+        white, soft_white, muted = (255, 255, 255, 255), (255, 255, 255, 200), (255, 255, 255, 150)
+
+        f_eyebrow    = self._font(24, bold=True)
+        f_date       = self._font(24)
+        f_temp       = self._font(200, bold=True)
+        f_cond       = self._font(46)
+        f_min        = self._font(30)
+        f_stat_val   = self._font(34, bold=True)
+        f_stat_lbl   = self._font(20, bold=True)
+        f_alert_ttl  = self._font(26, bold=True)
+        f_alert_body = self._font(22)
+
+        margin = 64
+
+        self._tracked_text(draw, (margin, 56), self.ciudad.upper(), f_eyebrow, soft_white, tracking=3)
+        fw = draw.textlength(fecha, font=f_date)
+        draw.text((W - margin - fw, 58), fecha, font=f_date, fill=muted)
+        draw.line([(margin, 100), (W - margin, 100)], fill=(255, 255, 255, 40), width=1)
+
+        icon_size = 300
+        icon = self._draw_icon(condicion, icon_size, accent)
+        icon_x, icon_y = margin - 10, 175
+        overlay.alpha_composite(icon, (icon_x, icon_y))
+
+        right_x = icon_x + icon_size + 40
+        temp_txt = f"{round(clima['temp_max'])}°"
+        draw.text((right_x, 130), temp_txt, font=f_temp, fill=white)
+        draw.text((right_x + 4, 335), f"Mín. {round(clima['temp_min'])}°C", font=f_min, fill=muted)
+        draw.text((right_x, 375), self._condicion_label(condicion), font=f_cond, fill=soft_white)
+
+        band_y = H - margin - 110
+        if alerta_txt:
+            ay0 = band_y - 78
+            draw.rounded_rectangle((margin, ay0, W - margin, band_y - 14), radius=16,
+                                    fill=(0, 0, 0, 90), outline=(255, 255, 255, 60), width=1)
+            draw.rectangle((margin, ay0, margin + 6, band_y - 14), fill=(255, 90, 90, 255))
+            tri_cx, tri_cy, tri_r = margin + 44, ay0 + 26, 13
+            draw.polygon([(tri_cx, tri_cy - tri_r), (tri_cx - tri_r, tri_cy + tri_r), (tri_cx + tri_r, tri_cy + tri_r)],
+                         fill=(255, 200, 200, 255))
+            draw.text((tri_cx - 2, tri_cy - 6), "!", font=self._font(18, bold=True), fill=(120, 20, 20, 255))
+            draw.text((margin + 66, ay0 + 10), "ALERTA METEOROLÓGICA", font=f_alert_ttl, fill=(255, 200, 200, 255))
+            draw.text((margin + 66, ay0 + 42), alerta_txt[:72], font=f_alert_body, fill=white)
+
+        draw.rounded_rectangle((margin, band_y, W - margin, H - margin), radius=20,
+                                fill=(255, 255, 255, 22), outline=(255, 255, 255, 45), width=1)
+        stats = [
+            ("RÁFAGAS", f"{round(clima['viento_rafagas'])} km/h"),
+            ("PROB. LLUVIA", f"{round(clima['prob_lluvia'])}%"),
+            ("ÍNDICE UV", str(clima['uv_index'])),
+        ]
+        col_w = (W - 2 * margin) / 3
+        for i, (label, val) in enumerate(stats):
+            cx = margin + col_w * i + col_w / 2
+            lb, vb = draw.textlength(label, font=f_stat_lbl), draw.textlength(val, font=f_stat_val)
+            draw.text((cx - lb / 2, band_y + 20), label, font=f_stat_lbl, fill=muted)
+            draw.text((cx - vb / 2, band_y + 52), val, font=f_stat_val, fill=white)
+            if i > 0:
+                lx = margin + col_w * i
+                draw.line([(lx, band_y + 18), (lx, H - margin - 18)], fill=(255, 255, 255, 40), width=1)
+
+        final = Image.alpha_composite(base, overlay).convert("RGB")
+        buf = io.BytesIO()
+        final.save(buf, format="JPEG", quality=90)
         buf.seek(0)
         return buf
 
