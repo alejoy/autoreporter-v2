@@ -22,38 +22,75 @@ const EXTRA_CONFIG_HINTS = {
   clima: '{\n  "ciudad": "Bariloche",\n  "lat": -41.1335,\n  "lon": -71.3103,\n  "smn_keywords": ["bariloche", "rio negro", "andina"]\n}',
 }
 
+const CLIMA_ESTILOS = [
+  { value: 'clasico',     label: 'Clásico — degradé full-bleed, temperatura gigante' },
+  { value: 'moderno',     label: 'Moderno — tarjeta clara redondeada' },
+  { value: 'profesional', label: 'Profesional — íconos vectoriales + glass bar (recomendado)' },
+]
+
+function safeParseJSON(text) {
+  try {
+    return text.trim() ? JSON.parse(text) : {}
+  } catch {
+    return null
+  }
+}
+
 function ExtraConfigEditor({ agentType, value, onChange }) {
   const [text, setText] = useState(JSON.stringify(value || {}, null, 2))
   const [error, setError] = useState(null)
 
   const handleChange = raw => {
     setText(raw)
-    try {
-      onChange(raw.trim() ? JSON.parse(raw) : {})
+    const parsed = safeParseJSON(raw)
+    if (parsed) {
+      onChange(parsed)
       setError(null)
-    } catch {
+    } else {
       setError('JSON inválido — se ignora hasta que lo corrijas')
     }
   }
 
+  const handleEstiloSelect = estilo => {
+    const current = safeParseJSON(text) || {}
+    const next = { ...current, estilo }
+    const nextText = JSON.stringify(next, null, 2)
+    setText(nextText)
+    onChange(next)
+    setError(null)
+  }
+
   if (!['horoscopo', 'clima'].includes(agentType)) return null
 
+  const estiloActual = (safeParseJSON(text) || {}).estilo || 'clasico'
+
   return (
-    <div className="space-y-1.5">
-      <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide">
-        Configuración extra (JSON) — específica de "{agentType}"
-      </label>
-      <textarea
-        rows={5}
-        value={text}
-        onChange={e => handleChange(e.target.value)}
-        placeholder={EXTRA_CONFIG_HINTS[agentType]}
-        className="w-full font-mono bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-blue-500"
-      />
-      <p className="text-xs text-slate-500">
-        Ej: {EXTRA_CONFIG_HINTS[agentType].replace(/\n\s*/g, ' ')}
-      </p>
-      {error && <p className="text-xs text-red-400">{error}</p>}
+    <div className="space-y-3">
+      {agentType === 'clima' && (
+        <Select
+          label="Estilo de la placa de imagen"
+          value={estiloActual}
+          onChange={e => handleEstiloSelect(e.target.value)}
+        >
+          {CLIMA_ESTILOS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </Select>
+      )}
+      <div className="space-y-1.5">
+        <label className="block text-xs font-medium text-slate-400 uppercase tracking-wide">
+          Configuración extra (JSON) — específica de "{agentType}"
+        </label>
+        <textarea
+          rows={5}
+          value={text}
+          onChange={e => handleChange(e.target.value)}
+          placeholder={EXTRA_CONFIG_HINTS[agentType]}
+          className="w-full font-mono bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-100 placeholder-slate-500 outline-none focus:border-blue-500"
+        />
+        <p className="text-xs text-slate-500">
+          Ej: {EXTRA_CONFIG_HINTS[agentType].replace(/\n\s*/g, ' ')}
+        </p>
+        {error && <p className="text-xs text-red-400">{error}</p>}
+      </div>
     </div>
   )
 }
