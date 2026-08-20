@@ -138,7 +138,7 @@ class BaseNewsAgent(ABC):
             self._log_db("warning", f"Sin imagen destacada: {titulo[:80]}", titulo, status="error")
             return {"title": titulo, "status": "error", "reason": "sin imagen destacada"}
 
-        media_id = wp_client.upload_media(og_image) if wp_client else None
+        media_id = wp_client.upload_media(og_image, alt_text=titulo) if wp_client else None
         if not media_id:
             self._log_db("error", f"Fallo subir imagen: {titulo[:80]}", titulo, status="error")
             return {"title": titulo, "status": "error", "reason": "fallo al subir imagen"}

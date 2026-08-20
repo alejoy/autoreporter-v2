@@ -99,7 +99,7 @@ class ClimaAgent:
             return [{"title": titulo, "status": "dry_run", "reason": "modo dry-run"}]
 
         # Imagen destacada — obligatoria
-        media_id = self._generar_imagen_placa(clima, cielo_texto, icono, alertas, fecha, wp_client)
+        media_id = self._generar_imagen_placa(clima, cielo_texto, icono, alertas, fecha, wp_client, alt_text=titulo)
         if not media_id:
             self.log.warning("SKIP — no se pudo generar/subir imagen de placa.")
             return [{"title": titulo, "status": "error", "reason": "sin imagen destacada"}]
@@ -217,7 +217,8 @@ ESTRUCTURA en HTML:
             return None
         return self.llm.call(prompt, max_tokens=800)
 
-    def _generar_imagen_placa(self, clima, cielo_texto, icono, alertas, fecha, wp_client) -> int | None:
+    def _generar_imagen_placa(self, clima, cielo_texto, icono, alertas, fecha, wp_client,
+                               alt_text: str | None = None) -> int | None:
         """Genera imagen de la placa de clima con Pillow (sin dependencias de sistema)."""
         if not wp_client:
             return None
@@ -229,7 +230,7 @@ ESTRUCTURA en HTML:
                 buf = self._render_moderna(clima, cielo_texto, icono, alertas, fecha)
             else:
                 buf = self._render_clasica(clima, cielo_texto, icono, alertas, fecha)
-            return wp_client.upload_media_bytes(buf.getvalue(), f"clima-{int(time.time())}.jpg")
+            return wp_client.upload_media_bytes(buf.getvalue(), f"clima-{int(time.time())}.jpg", alt_text=alt_text)
         except ImportError:
             self.log.warning("Pillow no instalado — sin imagen de placa.")
         except Exception as e:

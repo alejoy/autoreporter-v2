@@ -97,11 +97,16 @@ class WordPressClient:
             log.warning(f"No se pudo optimizar imagen ({e}) — subiendo original.")
             return img_bytes, "imagen.jpg", content_type
 
-    def upload_media(self, img_url: str, max_attempts: int = 3) -> int | None:
+    def upload_media(self, img_url: str, max_attempts: int = 3, alt_text: str | None = None) -> int | None:
         """
         Descarga una imagen desde img_url y la sube a WP.
         Reintenta el ciclo completo (descarga + subida) hasta max_attempts veces.
         Devuelve el media ID o None si todos los intentos fallan.
+
+        alt_text (opcional) — típicamente el título de la nota, para que la imagen
+        no quede sin texto alternativo (accesibilidad + señal real de SEO, a
+        diferencia del "puntaje" de plugins como AIOSEO que dependen de campos
+        propietarios que la REST API no expone).
         """
         headers_dl = {"User-Agent": "Mozilla/5.0 (AutoReporter/2.0)"}
         for attempt in range(1, max_attempts + 1):
@@ -132,10 +137,11 @@ class WordPressClient:
                     filename=filename,
                     file_bytes=file_bytes,
                     content_type=content_type,
+                    alt_text=alt_text,
                 )
                 if r.status_code == 201:
                     media_id = r.json()["id"]
-                    log.info(f"Imagen subida OK — media_id={media_id}")
+                    log.info(f"Imagen subida OK — media_id={media_id}" + (" (con alt_text)" if alt_text else ""))
                     return media_id
                 # HTTP 5xx → reintentar; HTTP 4xx → error permanente
                 log.warning(f"WP media HTTP {r.status_code} — {r.text[:200]}")
@@ -153,7 +159,8 @@ class WordPressClient:
         return None
 
     def upload_media_bytes(self, img_bytes: bytes, filename: str = "imagen.jpg",
-                           content_type: str = "image/jpeg", max_attempts: int = 3) -> int | None:
+                           content_type: str = "image/jpeg", max_attempts: int = 3,
+                           alt_text: str | None = None) -> int | None:
         """Sube bytes de imagen directamente a WP, con reintentos."""
         for attempt in range(1, max_attempts + 1):
             try:
@@ -163,6 +170,7 @@ class WordPressClient:
                     filename=filename,
                     file_bytes=img_bytes,
                     content_type=content_type,
+                    alt_text=alt_text,
                 )
                 if r.status_code == 201:
                     media_id = r.json()["id"]
@@ -283,18 +291,23 @@ class WordPressClient:
         raise RuntimeError(f"POST {path} falló después de {max_attempts} intentos.")
 
     def _post_multipart(self, path: str, filename: str, file_bytes: bytes,
-                         content_type: str) -> requests.Response:
+                         content_type: str, alt_text: str | None = None) -> requests.Response:
         """
         Sube el archivo como multipart/form-data (lo que hace un browser/Postman),
         en vez de POST con body crudo + Content-Disposition. Algunos WAFs/plugins
         de seguridad bloquean ese segundo patrón porque se parece a un intento de
         subir un webshell, incluso con credenciales válidas.
+
+        alt_text (opcional) viaja como campo de formulario aparte — la REST API
+        de medios de WP acepta alt_text/title/caption junto al archivo en el mismo
+        POST, no hace falta un PATCH de seguimiento.
         """
         url = self.base + path
+        data = {"alt_text": alt_text[:250]} if alt_text else None
         for attempt in range(3):
             try:
                 files = {"file": (filename, file_bytes, content_type)}
-                r = requests.post(url, files=files, auth=self.auth, timeout=60)
+                r = requests.post(url, files=files, data=data, auth=self.auth, timeout=60)
                 # Reintentar solo en 5xx (errores de servidor transitorios)
                 if r.status_code < 500:
                     return r

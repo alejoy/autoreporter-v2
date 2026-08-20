@@ -56,7 +56,7 @@ class HoroscopoAgent:
             return [{"title": titulo_final, "status": "dry_run", "reason": "modo dry-run"}]
 
         # Imagen destacada — obligatoria
-        media_id = self._generar_imagen_placa(fecha, wp_client)
+        media_id = self._generar_imagen_placa(fecha, wp_client, alt_text=titulo_final)
         if not media_id:
             self.log.warning("SKIP — no se pudo generar/subir imagen de portada.")
             return [{"title": titulo_final, "status": "error", "reason": "sin imagen destacada"}]
@@ -78,11 +78,11 @@ class HoroscopoAgent:
 
         return [{"title": titulo_final, "status": "error", "reason": "sin wp_client"}]
 
-    def _generar_imagen_placa(self, fecha: str, wp_client) -> int | None:
+    def _generar_imagen_placa(self, fecha: str, wp_client, alt_text: str | None = None) -> int | None:
         """Descarga la imagen estática del horóscopo (configurable por agente) y la sube a WP."""
         if not wp_client:
             return None
-        return wp_client.upload_media(self.imagen_url)
+        return wp_client.upload_media(self.imagen_url, alt_text=alt_text)
 
     def _generar(self, fecha: str) -> str | None:
         prompt = f"""Actuá como una astróloga experta. Escribí el HORÓSCOPO para hoy: {fecha}.
