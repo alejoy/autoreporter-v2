@@ -109,6 +109,7 @@ def main():
     dup_checker = DuplicateChecker(threshold=0.85, embedder=embedder)
     recent_posts = wp.get_recent_posts(count=100)
     dup_checker.load_from_wp(recent_posts)
+    dup_checker.load_source_urls(db.get_recent_source_urls(days=21))
 
     all_results: dict[str, list[dict]] = {}
 

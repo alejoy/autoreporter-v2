@@ -173,6 +173,30 @@ def load_pipeline(pipeline_id: int) -> PipelineConfig:
     return pipeline
 
 
+def get_recent_source_urls(days: int = 21) -> list[str]:
+    """
+    URLs FUENTE (no las del post publicado en WP) de notas publicadas en los
+    últimos `days` días, para sembrar el dedup por URL entre corridas — sin
+    esto, el DuplicateChecker solo tenía los links de WP en el cache (que
+    nunca matchean contra una URL de una fuente externa) y dependía 100% del
+    fuzzy matching de títulos parafraseados por la IA, que falla de forma
+    intermitente cuando la fuente reescribe el título cada día.
+    """
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT DISTINCT article_url FROM run_logs
+                    WHERE status = 'published'
+                      AND article_url IS NOT NULL
+                      AND run_at >= NOW() - (%s || ' days')::interval
+                """, (days,))
+                return [row["article_url"] for row in cur.fetchall() if row["article_url"]]
+    except Exception as e:
+        print(f"[db.get_recent_source_urls ERROR] {e}")
+        return []
+
+
 def save_log(pipeline_id: int, agent_id: int | None, level: str,
              message: str, article_title: str = "", article_url: str = "",
              status: str = "") -> None:

@@ -38,15 +38,29 @@ class DuplicateChecker:
             if title:
                 self._known_titles.append(self._normalize(title))
             if url:
-                self._known_urls.add(url.strip())
+                self._known_urls.add(self._normalize_url(url))
         log.info(
             f"Cache inicializado: {len(self._known_titles)} títulos, "
             f"{len(self._known_urls)} URLs conocidas."
         )
 
+    def load_source_urls(self, urls: list[str]) -> None:
+        """
+        Suma URLs FUENTE ya usadas (de corridas anteriores, vía run_logs) al
+        cache de URLs conocidas. Complementa a load_from_wp(), que solo carga
+        los links de los propios posts de WP — inútiles para matchear contra
+        la URL de un artículo externo.
+        """
+        antes = len(self._known_urls)
+        for url in urls:
+            if url:
+                self._known_urls.add(self._normalize_url(url))
+        log.info(f"{len(self._known_urls) - antes} URLs fuente sumadas al cache (historial de publicaciones).")
+
     def is_duplicate(self, title: str, source_url: str = None, exact: bool = False) -> bool:
-        # 1. Verificar URL exacta
-        if source_url and source_url.strip() in self._known_urls:
+        # 1. Verificar URL (normalizada, sin query string — evita que un
+        # ?utm_source=rss distinto haga pasar la misma URL como "nueva")
+        if source_url and self._normalize_url(source_url) in self._known_urls:
             log.info(f"DUPLICADO por URL: {source_url}")
             return True
 
@@ -103,7 +117,13 @@ class DuplicateChecker:
         """Registra una nota como publicada en el cache en memoria."""
         self._known_titles.append(self._normalize(title))
         if source_url:
-            self._known_urls.add(source_url.strip())
+            self._known_urls.add(self._normalize_url(source_url))
+
+    @staticmethod
+    def _normalize_url(url: str) -> str:
+        """Quita query string y trailing slash — evita que ?utm_source=rss u
+        otros parámetros de tracking hagan pasar la misma URL como distinta."""
+        return url.strip().split("?")[0].rstrip("/")
 
     @staticmethod
     def _normalize(text: str) -> str:

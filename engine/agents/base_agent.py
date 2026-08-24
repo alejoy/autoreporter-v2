@@ -58,7 +58,7 @@ SEO / GOOGLE DISCOVER:
 FORMATO:
 - Empezá DIRECTO con <p>. Sin título ni encabezado.
 - Solo etiquetas <p> y <strong>
-- 4 a 5 párrafos
+- {parrafos} párrafos
 - Solo HTML, sin markdown ni bloques de código
 - Español rioplatense"""
 
@@ -159,8 +159,11 @@ class BaseNewsAgent(ABC):
             if post:
                 if dup_checker:
                     dup_checker.mark_published(titulo, link)
-                url = post.get("link", "")
-                self._log_db("info", f"Publicado: {titulo[:80]}", titulo, article_url=url, status="published")
+                wp_url = post.get("link", "")
+                # Guardamos la URL FUENTE (no la del post de WP) — es la que
+                # permite detectar entre corridas que ya se usó este artículo,
+                # incluso si el título se reescribe distinto cada vez.
+                self._log_db("info", f"Publicado: {titulo[:80]} → {wp_url}", titulo, article_url=link, status="published")
                 return {"title": titulo, "status": "published", "reason": f"post_id={post['id']}"}
             self._log_db("error", f"Fallo publicación WP: {titulo[:80]}", titulo, status="error")
             return {"title": titulo, "status": "error", "reason": "fallo publicación WP"}
@@ -368,12 +371,17 @@ Respondé SOLO con JSON válido, sin texto adicional:
     def _generate_article(self, titulo: str, texto_fuente: str) -> str | None:
         if not self.llm:
             return None
+        # Extensión configurable por agente vía extra_config.parrafos (ej. "6 a 8").
+        # Default "4 a 5" preserva el comportamiento de siempre para agentes que
+        # no lo pisan explícitamente.
+        parrafos = (self.cfg.extra_config or {}).get("parrafos", "4 a 5") if self.cfg else "4 a 5"
         prompt = PROMPT_REDACCION.format(
             texto_fuente=texto_fuente[:3000],
             titulo=titulo,
             contexto_redactor=self.cfg.prompt_writing,
+            parrafos=parrafos,
         )
-        return self.llm.call(prompt, max_tokens=3000)
+        return self.llm.call(prompt, max_tokens=4000)
 
     # ── DB logging ──────────────────────────────────────────────────────────────
 
