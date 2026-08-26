@@ -403,7 +403,7 @@ Respondé SOLO con JSON válido, sin texto adicional:
         return f"{dia} {now.strftime('%d')} de {mes} de {now.strftime('%Y')}"
 
     @staticmethod
-    def _build_meta_description(html_nota: str, max_len: int = 155) -> str:
+    def _build_meta_description(html_nota: str, max_len: int = 143) -> str:
         """Genera meta description (Yoast/RankMath/excerpt) a partir del primer párrafo,
         sin pegarle otra llamada al LLM — barato y determinístico."""
         texto = re.sub(r"<[^>]+>", " ", html_nota)
