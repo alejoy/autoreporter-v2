@@ -405,11 +405,30 @@ Respondé SOLO con JSON válido, sin texto adicional:
     @staticmethod
     def _build_meta_description(html_nota: str, max_len: int = 143) -> str:
         """Genera meta description (Yoast/RankMath/excerpt) a partir del primer párrafo,
-        sin pegarle otra llamada al LLM — barato y determinístico."""
+        sin pegarle otra llamada al LLM — barato y determinístico.
+
+        Prioriza cortar en el límite de una ORACIÓN completa (termina en . ! o ?)
+        en vez de a mitad de una idea con "…" — un corte a mitad de frase se ve
+        poco profesional aunque respete el límite de caracteres. Solo recurre al
+        corte por palabra + "…" si ninguna oración completa entra en max_len.
+        """
         texto = re.sub(r"<[^>]+>", " ", html_nota)
         texto = re.sub(r"\s+", " ", texto).strip()
         if len(texto) <= max_len:
             return texto
+
+        # Buscar el último cierre de oración (. ! ?) que entre en el límite.
+        candidato = texto[:max_len]
+        mejor_corte = -1
+        for signo in (".", "!", "?"):
+            pos = candidato.rfind(signo)
+            if pos > mejor_corte:
+                mejor_corte = pos
+        # Evitar cortes demasiado cortos (ej. una abreviatura tipo "Sr." a los
+        # primeros caracteres) — solo lo usamos si deja un resumen sustancial.
+        if mejor_corte >= 40:
+            return candidato[:mejor_corte + 1]
+
         recortado = texto[:max_len]
         corte = recortado.rfind(" ")
         return (recortado[:corte] if corte > 0 else recortado) + "…"
