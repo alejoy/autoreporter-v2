@@ -60,7 +60,12 @@ FORMATO:
 - Solo etiquetas <p> y <strong>
 - {parrafos} párrafos
 - Solo HTML, sin markdown ni bloques de código
-- Español rioplatense"""
+- Español rioplatense
+
+Al final de TODO (después del último párrafo), agregá esta línea exacta:
+BAJADA_SEO: <una sola oración completa que resuma la nota, máximo 140 caracteres, sin HTML, sin comillas>
+
+Esa bajada es para el resumen que se muestra en listados y buscadores — NO es parte del cuerpo de la nota. Tiene que cerrar como oración completa dentro de los 140 caracteres, no cortar a mitad de idea."""
 
 
 class BaseNewsAgent(ABC):
@@ -115,7 +120,7 @@ class BaseNewsAgent(ABC):
             self.log.warning("Sin texto fuente — usando solo el título.")
             texto_fuente = titulo
 
-        html_nota = self._generate_article(titulo, texto_fuente)
+        html_nota, bajada_seo = self._generate_article(titulo, texto_fuente)
         if not html_nota:
             self._log_db("error", f"Fallo generación IA: {titulo[:80]}", titulo, status="error")
             return {"title": titulo, "status": "error", "reason": "fallo generación IA"}
@@ -143,7 +148,10 @@ class BaseNewsAgent(ABC):
             self._log_db("error", f"Fallo subir imagen: {titulo[:80]}", titulo, status="error")
             return {"title": titulo, "status": "error", "reason": "fallo al subir imagen"}
 
-        meta_desc = self._build_meta_description(html_nota)
+        # Preferimos la bajada dedicada que pidió el prompt (oración completa,
+        # pensada para caber en el límite) — _build_meta_description queda como
+        # red de seguridad si el LLM no la generó o se pasó de largo igual.
+        meta_desc = self._build_meta_description(bajada_seo) if bajada_seo else self._build_meta_description(html_nota)
 
         if wp_client:
             post = wp_client.create_post(
@@ -368,9 +376,11 @@ Respondé SOLO con JSON válido, sin texto adicional:
 
     # ── Generación de artículo ──────────────────────────────────────────────────
 
-    def _generate_article(self, titulo: str, texto_fuente: str) -> str | None:
+    def _generate_article(self, titulo: str, texto_fuente: str) -> tuple[str | None, str | None]:
+        """Devuelve (html_nota, bajada_seo). bajada_seo es None si el LLM no la
+        generó (fallback: _build_meta_description recorta del cuerpo, como antes)."""
         if not self.llm:
-            return None
+            return None, None
         # Extensión configurable por agente vía extra_config.parrafos (ej. "6 a 8").
         # Default "4 a 5" preserva el comportamiento de siempre para agentes que
         # no lo pisan explícitamente.
@@ -381,7 +391,17 @@ Respondé SOLO con JSON válido, sin texto adicional:
             contexto_redactor=self.cfg.prompt_writing,
             parrafos=parrafos,
         )
-        return self.llm.call(prompt, max_tokens=4000)
+        respuesta = self.llm.call(prompt, max_tokens=4000)
+        if not respuesta:
+            return None, None
+
+        bajada = None
+        m = re.search(r"BAJADA_SEO:\s*(.+)", respuesta)
+        if m:
+            bajada = m.group(1).strip().strip('"').strip()
+            respuesta = respuesta[:m.start()].rstrip()
+
+        return respuesta, bajada
 
     # ── DB logging ──────────────────────────────────────────────────────────────
 
